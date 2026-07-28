@@ -1,0 +1,186 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum FitnessGoal {
+  FAT_LOSS    @map("fat_loss")
+  MUSCLE_GAIN @map("muscle_gain")
+  MAINTENANCE @map("maintenance")
+
+  @@map("fitness_goal")
+}
+
+enum TrainingExperience {
+  BEGINNER     @map("beginner")
+  INTERMEDIATE @map("intermediate")
+  ADVANCED     @map("advanced")
+
+  @@map("training_experience")
+}
+
+enum TrainingCycleStatus {
+  PLANNED   @map("planned")
+  ACTIVE    @map("active")
+  COMPLETED @map("completed")
+  CANCELLED @map("cancelled")
+
+  @@map("training_cycle_status")
+}
+
+enum DayOfWeek {
+  MONDAY    @map("monday")
+  TUESDAY   @map("tuesday")
+  WEDNESDAY @map("wednesday")
+  THURSDAY  @map("thursday")
+  FRIDAY    @map("friday")
+  SATURDAY  @map("saturday")
+  SUNDAY    @map("sunday")
+
+  @@map("day_of_week")
+}
+
+enum WeightRecordType {
+  MORNING @map("morning")
+  EVENING @map("evening")
+
+  @@map("weight_record_type")
+}
+
+model UserProfile {
+  id                  String             @id @default(uuid()) @db.Uuid
+  /// Height in centimeters.
+  heightCm            Decimal            @db.Decimal(5, 2)
+  /// Current weight snapshot in kilograms; WeightRecord stores the history.
+  currentWeight       Decimal            @db.Decimal(5, 2)
+  goal                FitnessGoal
+  trainingExperience  TrainingExperience
+  weeklyTrainingDays  Int
+  /// Daily energy target in kilocalories.
+  dailyCaloriesTarget Int
+  /// Daily protein target in grams.
+  proteinTarget       Int
+  createdAt           DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime           @updatedAt @db.Timestamptz(3)
+  trainingCycles      TrainingCycle[]
+  workoutSessions     WorkoutSession[]
+  weightRecords       WeightRecord[]
+  sleepRecords        SleepRecord[]
+
+  @@map("user_profiles")
+}
+
+model TrainingCycle {
+  id              String              @id @default(uuid()) @db.Uuid
+  userProfileId   String              @db.Uuid
+  name            String              @db.VarChar(120)
+  goal            FitnessGoal
+  startDate       DateTime            @db.Date
+  endDate         DateTime            @db.Date
+  status          TrainingCycleStatus @default(PLANNED)
+  createdAt       DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(3)
+  userProfile     UserProfile         @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+  workoutPlans    WorkoutPlan[]
+  workoutSessions WorkoutSession[]
+
+  @@index([userProfileId, status])
+  @@index([userProfileId, startDate])
+  @@map("training_cycles")
+}
+
+model WorkoutPlan {
+  id              String        @id @default(uuid()) @db.Uuid
+  trainingCycleId String        @db.Uuid
+  dayOfWeek       DayOfWeek
+  category        String        @db.VarChar(50)
+  exerciseName    String        @db.VarChar(150)
+  sets            Int
+  reps            Int
+  /// Target load in kilograms; null supports bodyweight exercises.
+  targetWeight    Decimal?      @db.Decimal(6, 2)
+  targetRpe       Decimal?      @db.Decimal(3, 1)
+  order           Int
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(3)
+  trainingCycle   TrainingCycle @relation(fields: [trainingCycleId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingCycleId, dayOfWeek, order])
+  @@index([trainingCycleId, category])
+  @@map("workout_plans")
+}
+
+model WorkoutSession {
+  id              String                  @id @default(uuid()) @db.Uuid
+  userProfileId   String                  @db.Uuid
+  trainingCycleId String?                 @db.Uuid
+  date            DateTime                @db.Date
+  category        String                  @db.VarChar(50)
+  notes           String?                 @db.Text
+  createdAt       DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime                @updatedAt @db.Timestamptz(3)
+  userProfile     UserProfile             @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+  trainingCycle   TrainingCycle?          @relation(fields: [trainingCycleId], references: [id], onDelete: SetNull)
+  exerciseRecords WorkoutExerciseRecord[]
+
+  @@index([userProfileId, date])
+  @@index([trainingCycleId, date])
+  @@index([category, date])
+  @@map("workout_sessions")
+}
+
+model WorkoutExerciseRecord {
+  id               String         @id @default(uuid()) @db.Uuid
+  workoutSessionId String         @db.Uuid
+  exerciseName     String         @db.VarChar(150)
+  /// Actual load in kilograms; null supports bodyweight exercises.
+  actualWeight     Decimal?       @db.Decimal(6, 2)
+  sets             Int
+  reps             Int
+  rpe              Decimal?       @db.Decimal(3, 1)
+  completed        Boolean        @default(true)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(3)
+  workoutSession   WorkoutSession @relation(fields: [workoutSessionId], references: [id], onDelete: Cascade)
+
+  @@index([workoutSessionId])
+  @@index([exerciseName])
+  @@map("workout_exercise_records")
+}
+
+model WeightRecord {
+  id            String           @id @default(uuid()) @db.Uuid
+  userProfileId String           @db.Uuid
+  /// Recorded weight in kilograms.
+  weight        Decimal          @db.Decimal(5, 2)
+  recordType    WeightRecordType
+  date          DateTime         @db.Date
+  createdAt     DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime         @updatedAt @db.Timestamptz(3)
+  userProfile   UserProfile      @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, date, recordType])
+  @@map("weight_records")
+}
+
+model SleepRecord {
+  id              String      @id @default(uuid()) @db.Uuid
+  userProfileId   String      @db.Uuid
+  date            DateTime    @db.Date
+  /// Total sleep duration in minutes.
+  durationMinutes Int
+  /// Subjective sleep quality from 1 (poor) to 5 (excellent).
+  quality         Int
+  notes           String?     @db.Text
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
+  userProfile     UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userProfileId, date])
+  @@map("sleep_records")
+}
