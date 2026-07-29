@@ -46,6 +46,8 @@ describe('PromptBuilderService', () => {
     expect(messages[0].content).toContain('数据不足时必须明确说明');
     expect(messages[0].content).toContain('不修改用户的长期训练计划');
     expect(messages[0].content).toContain('减少基础科普');
+    expect(messages[0].content).toContain('可以调用写入工具');
+    expect(messages[0].content).toContain('写入所需字段不足时必须先追问');
     expect(messages[0].content).toContain('"weightTrend7Days"');
     expect(messages[0].content).toContain('"insufficient_data"');
     expect(messages[1]).toEqual({

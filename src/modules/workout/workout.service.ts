@@ -2,11 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { DayOfWeek, TrainingCycle, TrainingCycleStatus } from '../../generated/prisma/client';
 import { startOfLocalDay } from '../../common/utils/date.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CreateWorkoutRecordDto } from './dto/create-workout-record.dto';
 import { ExercisePerformanceDto } from './dto/exercise-performance.dto';
 import { TodayWorkoutDto } from './dto/today-workout.dto';
 import { TrainingCycleDto } from './dto/training-cycle.dto';
 
 const RECENT_EXERCISE_RECORD_LIMIT = 50;
+const RECORDED_WORKOUT_CATEGORY = 'strength';
 const DAY_OF_WEEK_BY_JAVASCRIPT_DAY = [
   DayOfWeek.SUNDAY,
   DayOfWeek.MONDAY,
@@ -20,6 +22,54 @@ const DAY_OF_WEEK_BY_JAVASCRIPT_DAY = [
 @Injectable()
 export class WorkoutService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async recordWorkout(input: CreateWorkoutRecordDto): Promise<ExercisePerformanceDto> {
+    const userProfile = await this.prisma.userProfile.findFirst({
+      select: {
+        id: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    if (!userProfile) {
+      throw new Error('User profile is not configured');
+    }
+
+    return this.prisma.$transaction(async (transaction) => {
+      const workoutSession = await transaction.workoutSession.create({
+        data: {
+          userProfileId: userProfile.id,
+          date: input.date,
+          category: RECORDED_WORKOUT_CATEGORY,
+        },
+      });
+      const exerciseRecord = await transaction.workoutExerciseRecord.create({
+        data: {
+          workoutSessionId: workoutSession.id,
+          exerciseName: input.exerciseName,
+          actualWeight: input.weight,
+          sets: input.sets,
+          reps: input.reps,
+          completed: true,
+        },
+      });
+
+      return {
+        id: exerciseRecord.id,
+        workoutSessionId: workoutSession.id,
+        date: workoutSession.date,
+        category: workoutSession.category,
+        exerciseName: exerciseRecord.exerciseName,
+        actualWeight: exerciseRecord.actualWeight?.toNumber() ?? null,
+        sets: exerciseRecord.sets,
+        reps: exerciseRecord.reps,
+        rpe: exerciseRecord.rpe?.toNumber() ?? null,
+        completed: exerciseRecord.completed,
+      };
+    });
+  }
 
   async getTodayWorkout(): Promise<TodayWorkoutDto | null> {
     const today = startOfLocalDay();

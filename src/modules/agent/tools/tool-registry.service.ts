@@ -1,9 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { AgentTool } from './agent-tool.interface';
+import {
+  OpenAIFunctionToolDefinition,
+  ToolSchemaBuilderService,
+} from './tool-schema-builder.service';
 
 @Injectable()
 export class ToolRegistryService {
   private readonly tools = new Map<string, AgentTool>();
+
+  constructor(private readonly toolSchemaBuilderService: ToolSchemaBuilderService) {}
 
   register(tool: AgentTool): void {
     if (!tool.name.trim()) {
@@ -23,5 +29,9 @@ export class ToolRegistryService {
 
   getAll(): readonly AgentTool[] {
     return [...this.tools.values()];
+  }
+
+  getDefinitions(): readonly OpenAIFunctionToolDefinition[] {
+    return this.toolSchemaBuilderService.build(this.getAll());
   }
 }

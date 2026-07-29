@@ -4,9 +4,15 @@ import { SleepService } from './sleep.service';
 
 describe('SleepService', () => {
   const findMany = jest.fn();
+  const findUserProfile = jest.fn();
+  const upsertSleepRecord = jest.fn();
   const prisma = {
+    userProfile: {
+      findFirst: findUserProfile,
+    },
     sleepRecord: {
       findMany,
+      upsert: upsertSleepRecord,
     },
   } as unknown as PrismaService;
   const service = new SleepService(prisma);
@@ -22,6 +28,72 @@ describe('SleepService', () => {
 
   beforeEach(() => {
     findMany.mockReset();
+    findUserProfile.mockReset();
+    upsertSleepRecord.mockReset();
+  });
+
+  it('upserts a sleep record for the single user and returns a DTO', async () => {
+    const date = new Date(2026, 6, 28);
+    const createdAt = new Date('2026-07-29T01:00:00.000Z');
+    const updatedAt = new Date('2026-07-29T01:00:00.000Z');
+    findUserProfile.mockResolvedValue({ id: 'profile-id' });
+    upsertSleepRecord.mockResolvedValue({
+      id: 'sleep-id',
+      userProfileId: 'profile-id',
+      date,
+      durationMinutes: 360,
+      quality: 3,
+      notes: null,
+      createdAt,
+      updatedAt,
+    });
+
+    await expect(
+      service.recordSleep({
+        durationMinutes: 360,
+        quality: 3,
+        date,
+      }),
+    ).resolves.toEqual({
+      id: 'sleep-id',
+      date,
+      durationMinutes: 360,
+      quality: 3,
+      notes: null,
+      createdAt,
+      updatedAt,
+    });
+    expect(upsertSleepRecord).toHaveBeenCalledWith({
+      where: {
+        userProfileId_date: {
+          userProfileId: 'profile-id',
+          date,
+        },
+      },
+      create: {
+        userProfileId: 'profile-id',
+        durationMinutes: 360,
+        quality: 3,
+        date,
+      },
+      update: {
+        durationMinutes: 360,
+        quality: 3,
+      },
+    });
+  });
+
+  it('rejects a sleep write when the single user profile is missing', async () => {
+    findUserProfile.mockResolvedValue(null);
+
+    await expect(
+      service.recordSleep({
+        durationMinutes: 360,
+        quality: 3,
+        date: new Date(2026, 6, 28),
+      }),
+    ).rejects.toThrow('User profile is not configured');
+    expect(upsertSleepRecord).not.toHaveBeenCalled();
   });
 
   it('returns recent sleep, averages, and a good status', async () => {

@@ -16,6 +16,10 @@ describe('GetDailyContextTool', () => {
   it('exposes stable metadata', () => {
     expect(tool.name).toBe('get_daily_context');
     expect(tool.description).toContain('只读健身上下文');
+    expect(tool.parameters).toEqual({
+      type: 'object',
+      properties: {},
+    });
   });
 
   it('delegates execution to AgentContextService', async () => {

@@ -16,6 +16,10 @@ describe('GetTodayWorkoutTool', () => {
   it('exposes stable metadata', () => {
     expect(tool.name).toBe('get_today_workout');
     expect(tool.description).toContain('只读训练计划');
+    expect(tool.parameters).toEqual({
+      type: 'object',
+      properties: {},
+    });
   });
 
   it('delegates execution to WorkoutService', async () => {

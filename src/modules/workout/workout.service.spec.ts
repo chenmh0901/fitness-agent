@@ -6,7 +6,22 @@ describe('WorkoutService', () => {
   const findTrainingCycle = jest.fn();
   const findWorkoutPlans = jest.fn();
   const findExerciseRecords = jest.fn();
+  const findUserProfile = jest.fn();
+  const createWorkoutSession = jest.fn();
+  const createExerciseRecord = jest.fn();
+  const runTransaction = jest.fn();
+  const transactionClient = {
+    workoutSession: {
+      create: createWorkoutSession,
+    },
+    workoutExerciseRecord: {
+      create: createExerciseRecord,
+    },
+  };
   const prisma = {
+    userProfile: {
+      findFirst: findUserProfile,
+    },
     trainingCycle: {
       findFirst: findTrainingCycle,
     },
@@ -16,6 +31,7 @@ describe('WorkoutService', () => {
     workoutExerciseRecord: {
       findMany: findExerciseRecords,
     },
+    $transaction: runTransaction,
   } as unknown as PrismaService;
   const service = new WorkoutService(prisma);
 
@@ -44,6 +60,87 @@ describe('WorkoutService', () => {
     findTrainingCycle.mockReset();
     findWorkoutPlans.mockReset();
     findExerciseRecords.mockReset();
+    findUserProfile.mockReset();
+    createWorkoutSession.mockReset();
+    createExerciseRecord.mockReset();
+    runTransaction.mockReset();
+    runTransaction.mockImplementation(
+      (callback: (transaction: typeof transactionClient) => unknown) => callback(transactionClient),
+    );
+  });
+
+  it('creates a workout session and exercise record for the single user', async () => {
+    const date = new Date(2026, 6, 29);
+    findUserProfile.mockResolvedValue({ id: 'profile-id' });
+    createWorkoutSession.mockResolvedValue({
+      id: 'session-id',
+      userProfileId: 'profile-id',
+      date,
+      category: 'strength',
+    });
+    createExerciseRecord.mockResolvedValue({
+      id: 'exercise-id',
+      workoutSessionId: 'session-id',
+      exerciseName: 'barbell bench press',
+      actualWeight: { toNumber: () => 80 },
+      sets: 4,
+      reps: 8,
+      rpe: null,
+      completed: true,
+    });
+
+    await expect(
+      service.recordWorkout({
+        exerciseName: 'barbell bench press',
+        weight: 80,
+        sets: 4,
+        reps: 8,
+        date,
+      }),
+    ).resolves.toEqual({
+      id: 'exercise-id',
+      workoutSessionId: 'session-id',
+      date,
+      category: 'strength',
+      exerciseName: 'barbell bench press',
+      actualWeight: 80,
+      sets: 4,
+      reps: 8,
+      rpe: null,
+      completed: true,
+    });
+    expect(createWorkoutSession).toHaveBeenCalledWith({
+      data: {
+        userProfileId: 'profile-id',
+        date,
+        category: 'strength',
+      },
+    });
+    expect(createExerciseRecord).toHaveBeenCalledWith({
+      data: {
+        workoutSessionId: 'session-id',
+        exerciseName: 'barbell bench press',
+        actualWeight: 80,
+        sets: 4,
+        reps: 8,
+        completed: true,
+      },
+    });
+  });
+
+  it('rejects a workout write when the single user profile is missing', async () => {
+    findUserProfile.mockResolvedValue(null);
+
+    await expect(
+      service.recordWorkout({
+        exerciseName: 'barbell bench press',
+        weight: 80,
+        sets: 4,
+        reps: 8,
+        date: new Date(2026, 6, 29),
+      }),
+    ).rejects.toThrow('User profile is not configured');
+    expect(runTransaction).not.toHaveBeenCalled();
   });
 
   it('returns the active cycle for today', async () => {

@@ -16,6 +16,16 @@ describe('GetWeightTrendTool', () => {
   it('exposes stable metadata', () => {
     expect(tool.name).toBe('get_weight_trend');
     expect(tool.description).toContain('{"days": 正整数}');
+    expect(tool.parameters).toEqual({
+      type: 'object',
+      properties: {
+        days: {
+          type: 'number',
+          description: '查询最近多少天体重趋势',
+        },
+      },
+      required: ['days'],
+    });
   });
 
   it('validates input and delegates execution to WeightService', async () => {

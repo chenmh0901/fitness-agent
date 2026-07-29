@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { TodayWorkoutDto } from '../../workout/dto/today-workout.dto';
 import { WorkoutService } from '../../workout/workout.service';
-import { AgentTool } from './agent-tool.interface';
+import { AgentTool, JsonSchema } from './agent-tool.interface';
 
 @Injectable()
 export class GetTodayWorkoutTool implements AgentTool {
   readonly name = 'get_today_workout';
   readonly description = '获取当前训练周期中今天的只读训练计划；没有有效周期时返回 null。';
+  readonly parameters: JsonSchema = {
+    type: 'object',
+    properties: {},
+  };
 
   constructor(private readonly workoutService: WorkoutService) {}
 

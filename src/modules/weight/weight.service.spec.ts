@@ -5,10 +5,26 @@ import { WeightService } from './weight.service';
 
 describe('WeightService', () => {
   const findMany = jest.fn();
+  const findUserProfile = jest.fn();
+  const upsertWeightRecord = jest.fn();
+  const updateUserProfile = jest.fn();
+  const runTransaction = jest.fn();
+  const transactionClient = {
+    weightRecord: {
+      upsert: upsertWeightRecord,
+    },
+    userProfile: {
+      update: updateUserProfile,
+    },
+  };
   const prisma = {
+    userProfile: {
+      findFirst: findUserProfile,
+    },
     weightRecord: {
       findMany,
     },
+    $transaction: runTransaction,
   } as unknown as PrismaService;
   const service = new WeightService(prisma);
 
@@ -23,6 +39,92 @@ describe('WeightService', () => {
 
   beforeEach(() => {
     findMany.mockReset();
+    findUserProfile.mockReset();
+    upsertWeightRecord.mockReset();
+    updateUserProfile.mockReset();
+    runTransaction.mockReset();
+    runTransaction.mockImplementation(
+      (callback: (transaction: typeof transactionClient) => unknown) => callback(transactionClient),
+    );
+  });
+
+  it('upserts a single-user weight record and updates the current weight snapshot', async () => {
+    const date = new Date(2026, 6, 29);
+    const createdAt = new Date('2026-07-29T01:00:00.000Z');
+    const updatedAt = new Date('2026-07-29T01:00:00.000Z');
+    findUserProfile.mockResolvedValue({ id: 'profile-id' });
+    upsertWeightRecord.mockResolvedValue({
+      id: 'weight-id',
+      userProfileId: 'profile-id',
+      weight: { toNumber: () => 90.5 },
+      recordType: WeightRecordType.MORNING,
+      date,
+      createdAt,
+      updatedAt,
+    });
+    updateUserProfile.mockResolvedValue({ id: 'profile-id' });
+
+    await expect(
+      service.recordWeight({
+        weight: 90.5,
+        recordType: WeightRecordType.MORNING,
+        date,
+      }),
+    ).resolves.toEqual({
+      id: 'weight-id',
+      weight: 90.5,
+      recordType: WeightRecordType.MORNING,
+      date,
+      createdAt,
+      updatedAt,
+    });
+    expect(findUserProfile).toHaveBeenCalledWith({
+      select: {
+        id: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+    expect(upsertWeightRecord).toHaveBeenCalledWith({
+      where: {
+        userProfileId_date_recordType: {
+          userProfileId: 'profile-id',
+          date,
+          recordType: WeightRecordType.MORNING,
+        },
+      },
+      create: {
+        userProfileId: 'profile-id',
+        weight: 90.5,
+        recordType: WeightRecordType.MORNING,
+        date,
+      },
+      update: {
+        weight: 90.5,
+      },
+    });
+    expect(updateUserProfile).toHaveBeenCalledWith({
+      where: {
+        id: 'profile-id',
+      },
+      data: {
+        currentWeight: 90.5,
+      },
+    });
+  });
+
+  it('rejects a weight write when the single user profile is missing', async () => {
+    findUserProfile.mockResolvedValue(null);
+
+    await expect(
+      service.recordWeight({
+        weight: 90.5,
+        recordType: WeightRecordType.MORNING,
+        date: new Date(2026, 6, 29),
+      }),
+    ).rejects.toThrow('User profile is not configured');
+    expect(runTransaction).not.toHaveBeenCalled();
   });
 
   it('returns recent morning and evening records as DTOs', async () => {

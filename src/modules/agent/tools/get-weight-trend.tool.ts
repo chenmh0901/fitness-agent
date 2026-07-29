@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { assertPositiveInteger } from '../../../common/utils/date.util';
 import { WeightTrendDto } from '../../weight/dto/weight-trend.dto';
 import { WeightService } from '../../weight/weight.service';
-import { AgentTool } from './agent-tool.interface';
+import { AgentTool, JsonSchema } from './agent-tool.interface';
 
 export interface GetWeightTrendToolInput {
   days: number;
@@ -13,6 +13,16 @@ export class GetWeightTrendTool implements AgentTool {
   readonly name = 'get_weight_trend';
   readonly description =
     '获取指定最近天数的早晨体重趋势，返回平均体重、变化量和趋势方向。输入格式：{"days": 正整数}。';
+  readonly parameters: JsonSchema = {
+    type: 'object',
+    properties: {
+      days: {
+        type: 'number',
+        description: '查询最近多少天体重趋势',
+      },
+    },
+    required: ['days'],
+  };
 
   constructor(private readonly weightService: WeightService) {}
 

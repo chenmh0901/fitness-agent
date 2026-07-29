@@ -8,4 +8,6 @@ export const environmentValidationSchema = Joi.object({
       scheme: ['postgres', 'postgresql'],
     })
     .required(),
+  OPENAI_API_KEY: Joi.string().trim().min(1).required(),
+  OPENAI_MODEL: Joi.string().trim().min(1).required(),
 });
