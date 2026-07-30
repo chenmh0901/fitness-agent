@@ -1,5 +1,6 @@
 import { DayOfWeek, FitnessGoal, TrainingCycleStatus } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ExerciseProgressTrend } from './dto/exercise-performance.dto';
 import { WorkoutService } from './workout.service';
 
 describe('WorkoutService', () => {
@@ -108,6 +109,12 @@ describe('WorkoutService', () => {
       reps: 8,
       rpe: null,
       completed: true,
+      averageRpe: null,
+      lastWeight: 80,
+      lastSets: 4,
+      lastReps: 8,
+      lastRpe: null,
+      progressTrend: ExerciseProgressTrend.INSUFFICIENT_DATA,
     });
     expect(createWorkoutSession).toHaveBeenCalledWith({
       data: {
@@ -123,6 +130,60 @@ describe('WorkoutService', () => {
         actualWeight: 80,
         sets: 4,
         reps: 8,
+        rpe: null,
+        completed: true,
+      },
+    });
+  });
+
+  it('saves RPE and completion state for workout feedback', async () => {
+    const date = new Date(2026, 6, 30);
+    findUserProfile.mockResolvedValue({ id: 'profile-id' });
+    createWorkoutSession.mockResolvedValue({
+      id: 'session-id',
+      userProfileId: 'profile-id',
+      date,
+      category: 'strength',
+    });
+    createExerciseRecord.mockResolvedValue({
+      id: 'exercise-id',
+      workoutSessionId: 'session-id',
+      exerciseName: 'barbell bench press',
+      actualWeight: { toNumber: () => 80 },
+      sets: 4,
+      reps: 8,
+      rpe: { toNumber: () => 9 },
+      completed: true,
+    });
+
+    await expect(
+      service.recordWorkoutFeedback({
+        exerciseName: 'barbell bench press',
+        weight: 80,
+        sets: 4,
+        reps: 8,
+        rpe: 9,
+        completed: true,
+        date,
+      }),
+    ).resolves.toMatchObject({
+      exerciseName: 'barbell bench press',
+      actualWeight: 80,
+      rpe: 9,
+      completed: true,
+      lastWeight: 80,
+      lastSets: 4,
+      lastReps: 8,
+      lastRpe: 9,
+    });
+    expect(createExerciseRecord).toHaveBeenCalledWith({
+      data: {
+        workoutSessionId: 'session-id',
+        exerciseName: 'barbell bench press',
+        actualWeight: 80,
+        sets: 4,
+        reps: 8,
+        rpe: 9,
         completed: true,
       },
     });
@@ -231,20 +292,35 @@ describe('WorkoutService', () => {
     expect(findWorkoutPlans).not.toHaveBeenCalled();
   });
 
-  it('returns recent completed exercise performance as DTOs', async () => {
-    const date = new Date(2026, 6, 27);
+  it('summarizes unchanged weight as stable and averages RPE by exercise', async () => {
+    const latestDate = new Date(2026, 6, 30);
+    const previousDate = new Date(2026, 6, 27);
     findExerciseRecords.mockResolvedValue([
       {
-        id: 'record-id',
-        workoutSessionId: 'session-id',
+        id: 'latest-record-id',
+        workoutSessionId: 'latest-session-id',
         exerciseName: 'barbell bench press',
-        actualWeight: { toNumber: () => 82.5 },
+        actualWeight: { toNumber: () => 80 },
         sets: 4,
         reps: 8,
-        rpe: { toNumber: () => 8.5 },
+        rpe: { toNumber: () => 8 },
         completed: true,
         workoutSession: {
-          date,
+          date: latestDate,
+          category: 'chest',
+        },
+      },
+      {
+        id: 'previous-record-id',
+        workoutSessionId: 'previous-session-id',
+        exerciseName: 'Barbell Bench Press',
+        actualWeight: { toNumber: () => 80 },
+        sets: 4,
+        reps: 8,
+        rpe: { toNumber: () => 8 },
+        completed: true,
+        workoutSession: {
+          date: previousDate,
           category: 'chest',
         },
       },
@@ -252,22 +328,25 @@ describe('WorkoutService', () => {
 
     await expect(service.getRecentExercisePerformance()).resolves.toEqual([
       {
-        id: 'record-id',
-        workoutSessionId: 'session-id',
-        date,
+        id: 'latest-record-id',
+        workoutSessionId: 'latest-session-id',
+        date: latestDate,
         category: 'chest',
         exerciseName: 'barbell bench press',
-        actualWeight: 82.5,
+        actualWeight: 80,
         sets: 4,
         reps: 8,
-        rpe: 8.5,
+        rpe: 8,
         completed: true,
+        averageRpe: 8,
+        lastWeight: 80,
+        lastSets: 4,
+        lastReps: 8,
+        lastRpe: 8,
+        progressTrend: ExerciseProgressTrend.STABLE,
       },
     ]);
     expect(findExerciseRecords).toHaveBeenCalledWith({
-      where: {
-        completed: true,
-      },
       include: {
         workoutSession: {
           select: {
@@ -279,5 +358,88 @@ describe('WorkoutService', () => {
       orderBy: [{ workoutSession: { date: 'desc' } }, { createdAt: 'desc' }],
       take: 50,
     });
+  });
+
+  it('marks an increased exercise weight as improving', async () => {
+    findExerciseRecords.mockResolvedValue([
+      {
+        id: 'latest-record-id',
+        workoutSessionId: 'latest-session-id',
+        exerciseName: 'barbell bench press',
+        actualWeight: { toNumber: () => 80 },
+        sets: 4,
+        reps: 8,
+        rpe: { toNumber: () => 9 },
+        completed: true,
+        workoutSession: {
+          date: new Date(2026, 6, 30),
+          category: 'chest',
+        },
+      },
+      {
+        id: 'previous-record-id',
+        workoutSessionId: 'previous-session-id',
+        exerciseName: 'barbell bench press',
+        actualWeight: { toNumber: () => 70 },
+        sets: 4,
+        reps: 8,
+        rpe: { toNumber: () => 8 },
+        completed: true,
+        workoutSession: {
+          date: new Date(2026, 6, 23),
+          category: 'chest',
+        },
+      },
+    ]);
+
+    await expect(service.getRecentExercisePerformance()).resolves.toEqual([
+      expect.objectContaining({
+        exerciseName: 'barbell bench press',
+        lastWeight: 80,
+        lastRpe: 9,
+        averageRpe: 8.5,
+        progressTrend: ExerciseProgressTrend.IMPROVING,
+      }),
+    ]);
+  });
+
+  it('marks a drop from completed to incomplete as declining', async () => {
+    findExerciseRecords.mockResolvedValue([
+      {
+        id: 'latest-record-id',
+        workoutSessionId: 'latest-session-id',
+        exerciseName: 'barbell bench press',
+        actualWeight: { toNumber: () => 80 },
+        sets: 4,
+        reps: 8,
+        rpe: { toNumber: () => 10 },
+        completed: false,
+        workoutSession: {
+          date: new Date(2026, 6, 30),
+          category: 'chest',
+        },
+      },
+      {
+        id: 'previous-record-id',
+        workoutSessionId: 'previous-session-id',
+        exerciseName: 'barbell bench press',
+        actualWeight: { toNumber: () => 80 },
+        sets: 4,
+        reps: 8,
+        rpe: { toNumber: () => 8 },
+        completed: true,
+        workoutSession: {
+          date: new Date(2026, 6, 23),
+          category: 'chest',
+        },
+      },
+    ]);
+
+    await expect(service.getRecentExercisePerformance()).resolves.toEqual([
+      expect.objectContaining({
+        completed: false,
+        progressTrend: ExerciseProgressTrend.DECLINING,
+      }),
+    ]);
   });
 });

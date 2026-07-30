@@ -24,7 +24,7 @@ interface PendingToolCall {
 
 @Injectable()
 export class OpenAIAIProvider implements AIProvider {
-  private readonly client: OpenAI;
+  private readonly client?: OpenAI;
   private readonly model: string;
 
   constructor(
@@ -32,13 +32,17 @@ export class OpenAIAIProvider implements AIProvider {
     private readonly toolRegistryService: ToolRegistryService,
     @Optional() @Inject(OPENAI_SDK_CLIENT) client?: OpenAI,
   ) {
-    const apiKey = configService.getOrThrow<string>('OPENAI_API_KEY');
+    const apiKey = configService.get<string>('OPENAI_API_KEY')?.trim();
 
     this.model = configService.getOrThrow<string>('OPENAI_MODEL');
-    this.client = client ?? new OpenAI({ apiKey });
+    this.client = client ?? (apiKey ? new OpenAI({ apiKey }) : undefined);
   }
 
   async chat(messages: readonly AIMessage[]): Promise<AIResponse> {
+    if (!this.client) {
+      throw new OpenAIProviderError('OpenAI provider is not configured: OPENAI_API_KEY is missing');
+    }
+
     try {
       const tools = [...this.toolRegistryService.getDefinitions()];
       const completion = await this.client.chat.completions.create({

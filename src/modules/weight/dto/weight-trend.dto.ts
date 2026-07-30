@@ -11,6 +11,11 @@ export class WeightTrendDto {
   averageWeight: number | null;
   firstWeight: number | null;
   latestWeight: number | null;
+  minWeight: number | null;
+  maxWeight: number | null;
+  weightRange: number | null;
+  volatility: number | null;
+  weeklyAverageChange: number | null;
   change: number | null;
   trend: WeightTrendDirection;
 }

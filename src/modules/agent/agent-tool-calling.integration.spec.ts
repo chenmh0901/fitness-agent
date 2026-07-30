@@ -24,6 +24,11 @@ describe('Agent tool calling integration', () => {
       averageWeight: 70.2,
       firstWeight: 70.5,
       latestWeight: 70,
+      minWeight: 70,
+      maxWeight: 70.5,
+      weightRange: 0.5,
+      volatility: 0.16,
+      weeklyAverageChange: -0.58,
       change: -0.5,
       trend: WeightTrendDirection.DECREASING,
     };

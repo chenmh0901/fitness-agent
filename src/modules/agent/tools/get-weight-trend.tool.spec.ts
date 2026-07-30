@@ -35,6 +35,11 @@ describe('GetWeightTrendTool', () => {
       averageWeight: 75.2,
       firstWeight: 76,
       latestWeight: 74.8,
+      minWeight: 74.8,
+      maxWeight: 76,
+      weightRange: 1.2,
+      volatility: 0.37,
+      weeklyAverageChange: -0.3,
       change: -1.2,
       trend: WeightTrendDirection.DECREASING,
     };

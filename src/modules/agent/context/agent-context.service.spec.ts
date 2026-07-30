@@ -51,12 +51,30 @@ describe('AgentContextService', () => {
     const currentTrainingCycle = { id: 'cycle-id' };
     const weightTrend7Days = {
       days: 7,
+      recordCount: 7,
       averageWeight: 75.2,
+      firstWeight: 75.5,
+      latestWeight: 75,
+      minWeight: 75,
+      maxWeight: 75.5,
+      weightRange: 0.5,
+      volatility: 0.16,
+      weeklyAverageChange: -0.58,
+      change: -0.5,
       trend: WeightTrendDirection.STABLE,
     };
     const weightTrend30Days = {
       days: 30,
+      recordCount: 24,
       averageWeight: 76,
+      firstWeight: 77,
+      latestWeight: 75,
+      minWeight: 75,
+      maxWeight: 77.2,
+      weightRange: 2.2,
+      volatility: 0.62,
+      weeklyAverageChange: -0.5,
+      change: -2,
       trend: WeightTrendDirection.DECREASING,
     };
     const sleepSummary7Days = {
@@ -64,7 +82,26 @@ describe('AgentContextService', () => {
       averageDurationMinutes: 430,
       status: SleepStatus.GOOD,
     };
-    const recentExercisePerformance = [{ id: 'exercise-record-id' }];
+    const recentExercisePerformance = [
+      {
+        id: 'exercise-record-id',
+        workoutSessionId: 'session-id',
+        date: new Date(2026, 6, 30),
+        category: 'chest',
+        exerciseName: 'barbell bench press',
+        actualWeight: 80,
+        sets: 4,
+        reps: 8,
+        rpe: 9,
+        completed: true,
+        averageRpe: 8.5,
+        lastWeight: 80,
+        lastSets: 4,
+        lastReps: 8,
+        lastRpe: 9,
+        progressTrend: 'improving',
+      },
+    ];
 
     getProfile.mockResolvedValue(userProfile);
     getTodayWorkout.mockResolvedValue(todayWorkout);
@@ -98,6 +135,11 @@ describe('AgentContextService', () => {
       averageWeight: null,
       firstWeight: null,
       latestWeight: null,
+      minWeight: null,
+      maxWeight: null,
+      weightRange: null,
+      volatility: null,
+      weeklyAverageChange: null,
       change: null,
       trend: WeightTrendDirection.INSUFFICIENT_DATA,
     };

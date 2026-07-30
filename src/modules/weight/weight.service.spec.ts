@@ -165,9 +165,18 @@ describe('WeightService', () => {
 
   it('calculates average and decreasing trend from morning records only', async () => {
     findMany.mockResolvedValue([
-      { weight: { toNumber: () => 80.2 } },
-      { weight: { toNumber: () => 79.8 } },
-      { weight: { toNumber: () => 79.6 } },
+      {
+        date: new Date(2026, 6, 22),
+        weight: { toNumber: () => 80.2 },
+      },
+      {
+        date: new Date(2026, 6, 25),
+        weight: { toNumber: () => 79.8 },
+      },
+      {
+        date: new Date(2026, 6, 28),
+        weight: { toNumber: () => 79.6 },
+      },
     ]);
 
     await expect(service.getWeightTrend(7)).resolves.toEqual({
@@ -176,6 +185,11 @@ describe('WeightService', () => {
       averageWeight: 79.87,
       firstWeight: 80.2,
       latestWeight: 79.6,
+      minWeight: 79.6,
+      maxWeight: 80.2,
+      weightRange: 0.6,
+      volatility: 0.25,
+      weeklyAverageChange: -0.7,
       change: -0.6,
       trend: WeightTrendDirection.DECREASING,
     });
@@ -194,8 +208,14 @@ describe('WeightService', () => {
 
   it('marks changes within 0.1 kg as stable', async () => {
     findMany.mockResolvedValue([
-      { weight: { toNumber: () => 80 } },
-      { weight: { toNumber: () => 80.05 } },
+      {
+        date: new Date(2026, 6, 27),
+        weight: { toNumber: () => 80 },
+      },
+      {
+        date: new Date(2026, 6, 28),
+        weight: { toNumber: () => 80.05 },
+      },
     ]);
 
     await expect(service.getWeightTrend(7)).resolves.toMatchObject({
@@ -213,8 +233,50 @@ describe('WeightService', () => {
       averageWeight: null,
       firstWeight: null,
       latestWeight: null,
+      minWeight: null,
+      maxWeight: null,
+      weightRange: null,
+      volatility: null,
+      weeklyAverageChange: null,
       change: null,
       trend: WeightTrendDirection.INSUFFICIENT_DATA,
+    });
+  });
+
+  it('keeps range fields but marks rate and volatility unavailable for one record', async () => {
+    findMany.mockResolvedValue([
+      {
+        date: new Date(2026, 6, 28),
+        weight: { toNumber: () => 79.4 },
+      },
+    ]);
+
+    await expect(service.getWeightTrend(7)).resolves.toEqual({
+      days: 7,
+      recordCount: 1,
+      averageWeight: 79.4,
+      firstWeight: 79.4,
+      latestWeight: 79.4,
+      minWeight: 79.4,
+      maxWeight: 79.4,
+      weightRange: 0,
+      volatility: null,
+      weeklyAverageChange: null,
+      change: 0,
+      trend: WeightTrendDirection.INSUFFICIENT_DATA,
+    });
+  });
+
+  it('returns null weekly change when multiple records share one calendar date', async () => {
+    const date = new Date(2026, 6, 28);
+    findMany.mockResolvedValue([
+      { date, weight: { toNumber: () => 80 } },
+      { date, weight: { toNumber: () => 79.8 } },
+    ]);
+
+    await expect(service.getWeightTrend(7)).resolves.toMatchObject({
+      weeklyAverageChange: null,
+      volatility: 0.1,
     });
   });
 

@@ -3,12 +3,13 @@ import { SleepModule } from '../sleep/sleep.module';
 import { UserModule } from '../user/user.module';
 import { WeightModule } from '../weight/weight.module';
 import { WorkoutModule } from '../workout/workout.module';
+import { AgentController } from './agent.controller';
 import { AgentService } from './agent.service';
 import { AgentContextService } from './context/agent-context.service';
+import { DailyFitnessController } from './daily-fitness/daily-fitness.controller';
 import { DailyFitnessService } from './daily-fitness/daily-fitness.service';
 import { AgentLoopService } from './execution/agent-loop.service';
-import { AI_PROVIDER } from './provider/ai-provider.token';
-import { OpenAIAIProvider } from './provider/openai/openai-ai.provider';
+import { AI_PROVIDER_FACTORY_PROVIDER } from './provider/ai-provider.factory';
 import { PromptBuilderService } from './prompt/prompt-builder.service';
 import { GetDailyContextTool } from './tools/get-daily-context.tool';
 import { GetTodayWorkoutTool } from './tools/get-today-workout.tool';
@@ -21,6 +22,7 @@ import { RecordWorkoutTool } from './tools/write/record-workout.tool';
 
 @Module({
   imports: [UserModule, WeightModule, SleepModule, WorkoutModule],
+  controllers: [DailyFitnessController, AgentController],
   providers: [
     AgentContextService,
     DailyFitnessService,
@@ -65,10 +67,7 @@ import { RecordWorkoutTool } from './tools/write/record-workout.tool';
         return registry;
       },
     },
-    {
-      provide: AI_PROVIDER,
-      useClass: OpenAIAIProvider,
-    },
+    AI_PROVIDER_FACTORY_PROVIDER,
   ],
   exports: [
     AgentContextService,

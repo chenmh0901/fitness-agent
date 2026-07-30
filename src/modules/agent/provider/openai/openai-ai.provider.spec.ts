@@ -10,6 +10,7 @@ describe('OpenAIAIProvider', () => {
     OPENAI_MODEL: 'test-model',
   };
   const configService = {
+    get: jest.fn((key: keyof typeof configValues): string => configValues[key]),
     getOrThrow: jest.fn((key: keyof typeof configValues): string => configValues[key]),
   } as unknown as ConfigService;
   const client = {
@@ -44,6 +45,25 @@ describe('OpenAIAIProvider', () => {
 
   beforeEach(() => {
     provider = new OpenAIAIProvider(configService, toolRegistryService, client);
+  });
+
+  it('defers a missing API key error until chat is called', async () => {
+    const unconfiguredConfigService = {
+      get: jest.fn().mockReturnValue(undefined),
+      getOrThrow: jest.fn().mockReturnValue('test-model'),
+    } as unknown as ConfigService;
+    const unconfiguredProvider = new OpenAIAIProvider(
+      unconfiguredConfigService,
+      toolRegistryService,
+    );
+
+    await expect(
+      unconfiguredProvider.chat([{ role: 'user', content: '今天练什么？' }]),
+    ).rejects.toMatchObject({
+      name: 'OpenAIProviderError',
+      message: 'OpenAI provider is not configured: OPENAI_API_KEY is missing',
+    });
+    expect(createCompletion).not.toHaveBeenCalled();
   });
 
   it('maps text messages and returns an AI text response', async () => {

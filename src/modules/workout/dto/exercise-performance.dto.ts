@@ -1,3 +1,10 @@
+export enum ExerciseProgressTrend {
+  IMPROVING = 'improving',
+  STABLE = 'stable',
+  DECLINING = 'declining',
+  INSUFFICIENT_DATA = 'insufficient_data',
+}
+
 export class ExercisePerformanceDto {
   id: string;
   workoutSessionId: string;
@@ -9,4 +16,10 @@ export class ExercisePerformanceDto {
   reps: number;
   rpe: number | null;
   completed: boolean;
+  averageRpe: number | null;
+  lastWeight: number | null;
+  lastSets: number;
+  lastReps: number;
+  lastRpe: number | null;
+  progressTrend: ExerciseProgressTrend;
 }

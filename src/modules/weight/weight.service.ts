@@ -8,6 +8,7 @@ import { WeightRecordDto } from './dto/weight-record.dto';
 import { WeightTrendDirection, WeightTrendDto } from './dto/weight-trend.dto';
 
 const STABLE_WEIGHT_THRESHOLD_KG = 0.1;
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class WeightService {
@@ -111,6 +112,11 @@ export class WeightService {
         averageWeight: null,
         firstWeight: null,
         latestWeight: null,
+        minWeight: null,
+        maxWeight: null,
+        weightRange: null,
+        volatility: null,
+        weeklyAverageChange: null,
         change: null,
         trend: WeightTrendDirection.INSUFFICIENT_DATA,
       };
@@ -119,9 +125,11 @@ export class WeightService {
     const weights = records.map((record) => record.weight.toNumber());
     const firstWeight = weights[0];
     const latestWeight = weights.at(-1) ?? firstWeight;
-    const averageWeight = roundTo(
-      weights.reduce((total, weight) => total + weight, 0) / weights.length,
-    );
+    const rawAverageWeight = weights.reduce((total, weight) => total + weight, 0) / weights.length;
+    const averageWeight = roundTo(rawAverageWeight);
+    const minWeight = Math.min(...weights);
+    const maxWeight = Math.max(...weights);
+    const weightRange = roundTo(maxWeight - minWeight);
 
     if (weights.length === 1) {
       return {
@@ -130,12 +138,28 @@ export class WeightService {
         averageWeight,
         firstWeight,
         latestWeight,
+        minWeight,
+        maxWeight,
+        weightRange,
+        volatility: null,
+        weeklyAverageChange: null,
         change: 0,
         trend: WeightTrendDirection.INSUFFICIENT_DATA,
       };
     }
 
-    const change = roundTo(latestWeight - firstWeight);
+    const rawChange = latestWeight - firstWeight;
+    const change = roundTo(rawChange);
+    const volatility = roundTo(
+      Math.sqrt(
+        weights.reduce((total, weight) => total + (weight - rawAverageWeight) ** 2, 0) /
+          weights.length,
+      ),
+    );
+    const firstRecordDate = records[0].date;
+    const latestRecordDate = records.at(-1)?.date ?? firstRecordDate;
+    const elapsedDays = this.getCalendarDayDifference(firstRecordDate, latestRecordDate);
+    const weeklyAverageChange = elapsedDays > 0 ? roundTo((rawChange / elapsedDays) * 7) : null;
 
     return {
       days,
@@ -143,9 +167,25 @@ export class WeightService {
       averageWeight,
       firstWeight,
       latestWeight,
+      minWeight,
+      maxWeight,
+      weightRange,
+      volatility,
+      weeklyAverageChange,
       change,
       trend: this.getTrendDirection(change),
     };
+  }
+
+  private getCalendarDayDifference(firstDate: Date, latestDate: Date): number {
+    const firstDay = Date.UTC(firstDate.getFullYear(), firstDate.getMonth(), firstDate.getDate());
+    const latestDay = Date.UTC(
+      latestDate.getFullYear(),
+      latestDate.getMonth(),
+      latestDate.getDate(),
+    );
+
+    return Math.round((latestDay - firstDay) / MILLISECONDS_PER_DAY);
   }
 
   private getTrendDirection(change: number): WeightTrendDirection {

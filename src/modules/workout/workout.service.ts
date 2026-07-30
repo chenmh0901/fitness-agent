@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { DayOfWeek, TrainingCycle, TrainingCycleStatus } from '../../generated/prisma/client';
 import { startOfLocalDay } from '../../common/utils/date.util';
+import { roundTo } from '../../common/utils/number.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CreateWorkoutFeedbackDto } from './dto/create-workout-feedback.dto';
 import { CreateWorkoutRecordDto } from './dto/create-workout-record.dto';
-import { ExercisePerformanceDto } from './dto/exercise-performance.dto';
+import { ExercisePerformanceDto, ExerciseProgressTrend } from './dto/exercise-performance.dto';
 import { TodayWorkoutDto } from './dto/today-workout.dto';
 import { TrainingCycleDto } from './dto/training-cycle.dto';
 
@@ -19,11 +21,40 @@ const DAY_OF_WEEK_BY_JAVASCRIPT_DAY = [
   DayOfWeek.SATURDAY,
 ] as const;
 
+interface WorkoutRecordInput {
+  exerciseName: string;
+  weight: number;
+  sets: number;
+  reps: number;
+  rpe: number | null;
+  completed: boolean;
+  date: Date;
+}
+
+interface ComparableExerciseRecord {
+  actualWeight: {
+    toNumber(): number;
+  } | null;
+  completed: boolean;
+}
+
 @Injectable()
 export class WorkoutService {
   constructor(private readonly prisma: PrismaService) {}
 
   async recordWorkout(input: CreateWorkoutRecordDto): Promise<ExercisePerformanceDto> {
+    return this.saveWorkoutRecord({
+      ...input,
+      rpe: null,
+      completed: true,
+    });
+  }
+
+  async recordWorkoutFeedback(input: CreateWorkoutFeedbackDto): Promise<ExercisePerformanceDto> {
+    return this.saveWorkoutRecord(input);
+  }
+
+  private async saveWorkoutRecord(input: WorkoutRecordInput): Promise<ExercisePerformanceDto> {
     const userProfile = await this.prisma.userProfile.findFirst({
       select: {
         id: true,
@@ -52,9 +83,13 @@ export class WorkoutService {
           actualWeight: input.weight,
           sets: input.sets,
           reps: input.reps,
-          completed: true,
+          rpe: input.rpe,
+          completed: input.completed,
         },
       });
+
+      const actualWeight = exerciseRecord.actualWeight?.toNumber() ?? null;
+      const rpe = exerciseRecord.rpe?.toNumber() ?? null;
 
       return {
         id: exerciseRecord.id,
@@ -62,11 +97,17 @@ export class WorkoutService {
         date: workoutSession.date,
         category: workoutSession.category,
         exerciseName: exerciseRecord.exerciseName,
-        actualWeight: exerciseRecord.actualWeight?.toNumber() ?? null,
+        actualWeight,
         sets: exerciseRecord.sets,
         reps: exerciseRecord.reps,
-        rpe: exerciseRecord.rpe?.toNumber() ?? null,
+        rpe,
         completed: exerciseRecord.completed,
+        averageRpe: rpe,
+        lastWeight: actualWeight,
+        lastSets: exerciseRecord.sets,
+        lastReps: exerciseRecord.reps,
+        lastRpe: rpe,
+        progressTrend: ExerciseProgressTrend.INSUFFICIENT_DATA,
       };
     });
   }
@@ -115,9 +156,6 @@ export class WorkoutService {
 
   async getRecentExercisePerformance(): Promise<ExercisePerformanceDto[]> {
     const records = await this.prisma.workoutExerciseRecord.findMany({
-      where: {
-        completed: true,
-      },
       include: {
         workoutSession: {
           select: {
@@ -130,18 +168,81 @@ export class WorkoutService {
       take: RECENT_EXERCISE_RECORD_LIMIT,
     });
 
-    return records.map((record) => ({
-      id: record.id,
-      workoutSessionId: record.workoutSessionId,
-      date: record.workoutSession.date,
-      category: record.workoutSession.category,
-      exerciseName: record.exerciseName,
-      actualWeight: record.actualWeight?.toNumber() ?? null,
-      sets: record.sets,
-      reps: record.reps,
-      rpe: record.rpe?.toNumber() ?? null,
-      completed: record.completed,
-    }));
+    const recordsByExercise = new Map<string, (typeof records)[number][]>();
+
+    for (const record of records) {
+      const normalizedExerciseName = record.exerciseName.trim().toLowerCase();
+      const exerciseRecords = recordsByExercise.get(normalizedExerciseName) ?? [];
+      exerciseRecords.push(record);
+      recordsByExercise.set(normalizedExerciseName, exerciseRecords);
+    }
+
+    return [...recordsByExercise.values()].map((exerciseRecords) => {
+      const latestRecord = exerciseRecords[0];
+      const previousRecord = exerciseRecords[1];
+      const rpeValues = exerciseRecords
+        .map((record) => record.rpe?.toNumber() ?? null)
+        .filter((rpe): rpe is number => rpe !== null);
+      const averageRpe =
+        rpeValues.length > 0
+          ? roundTo(rpeValues.reduce((total, rpe) => total + rpe, 0) / rpeValues.length)
+          : null;
+      const lastWeight = latestRecord.actualWeight?.toNumber() ?? null;
+      const lastRpe = latestRecord.rpe?.toNumber() ?? null;
+
+      return {
+        id: latestRecord.id,
+        workoutSessionId: latestRecord.workoutSessionId,
+        date: latestRecord.workoutSession.date,
+        category: latestRecord.workoutSession.category,
+        exerciseName: latestRecord.exerciseName,
+        actualWeight: lastWeight,
+        sets: latestRecord.sets,
+        reps: latestRecord.reps,
+        rpe: lastRpe,
+        completed: latestRecord.completed,
+        averageRpe,
+        lastWeight,
+        lastSets: latestRecord.sets,
+        lastReps: latestRecord.reps,
+        lastRpe,
+        progressTrend: this.getProgressTrend(latestRecord, previousRecord),
+      };
+    });
+  }
+
+  private getProgressTrend(
+    latestRecord: ComparableExerciseRecord,
+    previousRecord?: ComparableExerciseRecord,
+  ): ExerciseProgressTrend {
+    if (!previousRecord) {
+      return ExerciseProgressTrend.INSUFFICIENT_DATA;
+    }
+
+    if (latestRecord.completed !== previousRecord.completed) {
+      return latestRecord.completed
+        ? ExerciseProgressTrend.IMPROVING
+        : ExerciseProgressTrend.DECLINING;
+    }
+
+    const latestWeight = latestRecord.actualWeight?.toNumber() ?? null;
+    const previousWeight = previousRecord.actualWeight?.toNumber() ?? null;
+
+    if (latestWeight === null || previousWeight === null) {
+      return ExerciseProgressTrend.INSUFFICIENT_DATA;
+    }
+
+    const weightChange = latestWeight - previousWeight;
+
+    if (weightChange > 0) {
+      return ExerciseProgressTrend.IMPROVING;
+    }
+
+    if (weightChange < 0) {
+      return ExerciseProgressTrend.DECLINING;
+    }
+
+    return ExerciseProgressTrend.STABLE;
   }
 
   private findCurrentTrainingCycle(date: Date): Promise<TrainingCycle | null> {

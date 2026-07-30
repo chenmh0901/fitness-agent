@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { startOfLocalDay } from '../../../common/utils/date.util';
+import { toLocalDateString } from '../../../common/utils/date.util';
 import { SleepService } from '../../sleep/sleep.service';
 import { UserProfileService } from '../../user/user-profile.service';
 import { WeightService } from '../../weight/weight.service';
@@ -15,11 +15,8 @@ export class DailyFitnessService {
     private readonly workoutService: WorkoutService,
   ) {}
 
-  async getDailySummary(currentDate: Date): Promise<DailyFitnessSummaryDto> {
-    if (!(currentDate instanceof Date) || Number.isNaN(currentDate.getTime())) {
-      throw new TypeError('currentDate must be a valid Date');
-    }
-
+  async getTodaySummary(): Promise<DailyFitnessSummaryDto> {
+    const generatedAt = new Date();
     const [userProfile, todayWorkout, weightSummary, sleepSummary, recentExercisePerformance] =
       await Promise.all([
         this.userProfileService.getProfile(),
@@ -30,7 +27,8 @@ export class DailyFitnessService {
       ]);
 
     return {
-      date: startOfLocalDay(currentDate),
+      localDate: toLocalDateString(generatedAt),
+      generatedAt: generatedAt.toISOString(),
       weightSummary,
       sleepSummary,
       todayWorkout,

@@ -4,13 +4,16 @@ import { RecordWorkoutTool } from './record-workout.tool';
 
 describe('RecordWorkoutTool', () => {
   const recordWorkout = jest.fn();
+  const recordWorkoutFeedback = jest.fn();
   const workoutService = {
     recordWorkout,
+    recordWorkoutFeedback,
   } as unknown as WorkoutService;
   const tool = new RecordWorkoutTool(workoutService);
 
   beforeEach(() => {
     recordWorkout.mockReset();
+    recordWorkoutFeedback.mockReset();
   });
 
   it('exposes the record_workout function schema', () => {
@@ -37,6 +40,16 @@ describe('RecordWorkoutTool', () => {
           description: '每组重复次数',
           minimum: 1,
         },
+        rpe: {
+          type: 'number',
+          description: '主观用力程度，范围 1-10',
+          minimum: 1,
+          maximum: 10,
+        },
+        completed: {
+          type: 'boolean',
+          description: '是否完成计划组次',
+        },
         date: {
           type: 'string',
           description: '训练日期，格式 YYYY-MM-DD',
@@ -56,6 +69,14 @@ describe('RecordWorkoutTool', () => {
       actualWeight: 80,
       sets: 4,
       reps: 8,
+      rpe: null,
+      completed: true,
+      averageRpe: null,
+      lastWeight: 80,
+      lastSets: 4,
+      lastReps: 8,
+      lastRpe: null,
+      progressTrend: 'insufficient_data',
       date,
     } as ExercisePerformanceDto;
     recordWorkout.mockResolvedValue(savedRecord);
@@ -76,6 +97,50 @@ describe('RecordWorkoutTool', () => {
       reps: 8,
       date,
     });
+    expect(recordWorkoutFeedback).not.toHaveBeenCalled();
+  });
+
+  it('preserves RPE feedback through the existing record_workout tool', async () => {
+    const date = new Date(2026, 6, 30);
+    const savedRecord = {
+      id: 'exercise-id',
+      workoutSessionId: 'session-id',
+      exerciseName: 'barbell bench press',
+      actualWeight: 80,
+      sets: 4,
+      reps: 8,
+      rpe: 9,
+      completed: true,
+      averageRpe: 9,
+      lastWeight: 80,
+      lastSets: 4,
+      lastReps: 8,
+      lastRpe: 9,
+      progressTrend: 'insufficient_data',
+      date,
+    } as ExercisePerformanceDto;
+    recordWorkoutFeedback.mockResolvedValue(savedRecord);
+
+    await expect(
+      tool.execute({
+        exerciseName: 'barbell bench press',
+        weight: 80,
+        sets: 4,
+        reps: 8,
+        rpe: 9,
+        date: '2026-07-30',
+      }),
+    ).resolves.toBe(savedRecord);
+    expect(recordWorkoutFeedback).toHaveBeenCalledWith({
+      exerciseName: 'barbell bench press',
+      weight: 80,
+      sets: 4,
+      reps: 8,
+      rpe: 9,
+      completed: true,
+      date,
+    });
+    expect(recordWorkout).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -95,8 +160,25 @@ describe('RecordWorkoutTool', () => {
       reps: 8,
       date: '2026-07-29',
     },
+    {
+      exerciseName: 'barbell bench press',
+      weight: 80,
+      sets: 4,
+      reps: 8,
+      rpe: 0,
+      date: '2026-07-29',
+    },
+    {
+      exerciseName: 'barbell bench press',
+      weight: 80,
+      sets: 4,
+      reps: 8,
+      rpe: 11,
+      date: '2026-07-29',
+    },
   ])('rejects invalid input %p without calling WorkoutService', async (input) => {
     await expect(tool.execute(input)).rejects.toBeInstanceOf(TypeError);
     expect(recordWorkout).not.toHaveBeenCalled();
+    expect(recordWorkoutFeedback).not.toHaveBeenCalled();
   });
 });

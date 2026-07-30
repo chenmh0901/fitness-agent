@@ -34,6 +34,15 @@ describe('DailyFitnessService', () => {
     workoutService,
   );
 
+  beforeAll(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 6, 30, 12));
+  });
+
+  afterAll(() => {
+    jest.useRealTimers();
+  });
+
   beforeEach(() => {
     getProfile.mockReset();
     getWeightTrend.mockReset();
@@ -43,14 +52,14 @@ describe('DailyFitnessService', () => {
   });
 
   it('aggregates the daily fitness data into a stable summary DTO', async () => {
-    const currentDate = new Date(2026, 6, 29, 16, 30);
+    const generatedAt = new Date(2026, 6, 30, 12).toISOString();
     const userProfile = {
       id: 'profile-id',
       currentWeight: 90.5,
       trainingExperience: 'INTERMEDIATE',
     };
     const todayWorkout = {
-      date: new Date(2026, 6, 29),
+      date: new Date(2026, 6, 30),
       exercises: [{ id: 'plan-id', exerciseName: 'barbell bench press' }],
     };
     const weightSummary = {
@@ -59,6 +68,11 @@ describe('DailyFitnessService', () => {
       averageWeight: 90.8,
       firstWeight: 91.2,
       latestWeight: 90.5,
+      minWeight: 90.4,
+      maxWeight: 91.3,
+      weightRange: 0.9,
+      volatility: 0.3,
+      weeklyAverageChange: -0.82,
       change: -0.7,
       trend: WeightTrendDirection.DECREASING,
     };
@@ -73,8 +87,21 @@ describe('DailyFitnessService', () => {
     const recentExercisePerformance = [
       {
         id: 'exercise-record-id',
+        workoutSessionId: 'session-id',
+        date: new Date(2026, 6, 29),
+        category: 'chest',
         exerciseName: 'barbell bench press',
         actualWeight: 80,
+        sets: 4,
+        reps: 8,
+        rpe: 9,
+        completed: true,
+        averageRpe: 8.5,
+        lastWeight: 80,
+        lastSets: 4,
+        lastReps: 8,
+        lastRpe: 9,
+        progressTrend: 'stable',
       },
     ];
 
@@ -84,8 +111,9 @@ describe('DailyFitnessService', () => {
     getRecentSleep.mockResolvedValue(sleepSummary);
     getRecentExercisePerformance.mockResolvedValue(recentExercisePerformance);
 
-    await expect(service.getDailySummary(currentDate)).resolves.toEqual({
-      date: new Date(2026, 6, 29),
+    await expect(service.getTodaySummary()).resolves.toEqual({
+      localDate: '2026-07-30',
+      generatedAt,
       weightSummary,
       sleepSummary,
       todayWorkout,
@@ -102,12 +130,18 @@ describe('DailyFitnessService', () => {
   });
 
   it('preserves missing and empty source data without generating recommendations', async () => {
+    const generatedAt = new Date(2026, 6, 30, 12).toISOString();
     const weightSummary = {
       days: 7,
       recordCount: 0,
       averageWeight: null,
       firstWeight: null,
       latestWeight: null,
+      minWeight: null,
+      maxWeight: null,
+      weightRange: null,
+      volatility: null,
+      weeklyAverageChange: null,
       change: null,
       trend: WeightTrendDirection.INSUFFICIENT_DATA,
     };
@@ -126,8 +160,9 @@ describe('DailyFitnessService', () => {
     getRecentSleep.mockResolvedValue(sleepSummary);
     getRecentExercisePerformance.mockResolvedValue([]);
 
-    await expect(service.getDailySummary(new Date(2026, 6, 29))).resolves.toEqual({
-      date: new Date(2026, 6, 29),
+    await expect(service.getTodaySummary()).resolves.toEqual({
+      localDate: '2026-07-30',
+      generatedAt,
       weightSummary,
       sleepSummary,
       todayWorkout: null,
@@ -136,16 +171,5 @@ describe('DailyFitnessService', () => {
         recentExercisePerformance: [],
       },
     });
-  });
-
-  it('rejects an invalid date before reading any data source', async () => {
-    await expect(service.getDailySummary(new Date('invalid'))).rejects.toThrow(
-      'currentDate must be a valid Date',
-    );
-    expect(getProfile).not.toHaveBeenCalled();
-    expect(getTodayWorkout).not.toHaveBeenCalled();
-    expect(getWeightTrend).not.toHaveBeenCalled();
-    expect(getRecentSleep).not.toHaveBeenCalled();
-    expect(getRecentExercisePerformance).not.toHaveBeenCalled();
   });
 });

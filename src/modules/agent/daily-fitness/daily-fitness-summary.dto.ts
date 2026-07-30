@@ -10,7 +10,8 @@ export class DailyFitnessRecommendationsContextDto {
 }
 
 export class DailyFitnessSummaryDto {
-  date: Date;
+  localDate: string;
+  generatedAt: string;
   weightSummary: WeightTrendDto;
   sleepSummary: SleepSummaryDto;
   todayWorkout: TodayWorkoutDto | null;
