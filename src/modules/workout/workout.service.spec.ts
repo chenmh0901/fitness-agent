@@ -1,4 +1,9 @@
-import { DayOfWeek, FitnessGoal, TrainingCycleStatus } from '../../generated/prisma/client';
+import {
+  DayOfWeek,
+  ProfileFitnessGoal,
+  TrainingCycleStatus,
+  TrainingPlanVersionStatus,
+} from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ExerciseProgressTrend } from './dto/exercise-performance.dto';
 import { WorkoutService } from './workout.service';
@@ -7,6 +12,7 @@ describe('WorkoutService', () => {
   const findTrainingCycle = jest.fn();
   const findWorkoutPlans = jest.fn();
   const findExerciseRecords = jest.fn();
+  const findWorkoutSessions = jest.fn();
   const findUserProfile = jest.fn();
   const createWorkoutSession = jest.fn();
   const createExerciseRecord = jest.fn();
@@ -32,6 +38,9 @@ describe('WorkoutService', () => {
     workoutExerciseRecord: {
       findMany: findExerciseRecords,
     },
+    workoutSession: {
+      findMany: findWorkoutSessions,
+    },
     $transaction: runTransaction,
   } as unknown as PrismaService;
   const service = new WorkoutService(prisma);
@@ -40,7 +49,7 @@ describe('WorkoutService', () => {
     id: 'cycle-id',
     userProfileId: 'profile-id',
     name: 'Fat loss cycle 1',
-    goal: FitnessGoal.FAT_LOSS,
+    goal: ProfileFitnessGoal.FAT_LOSS,
     startDate: new Date(2026, 6, 1),
     endDate: new Date(2026, 7, 31),
     status: TrainingCycleStatus.ACTIVE,
@@ -61,6 +70,7 @@ describe('WorkoutService', () => {
     findTrainingCycle.mockReset();
     findWorkoutPlans.mockReset();
     findExerciseRecords.mockReset();
+    findWorkoutSessions.mockReset();
     findUserProfile.mockReset();
     createWorkoutSession.mockReset();
     createExerciseRecord.mockReset();
@@ -276,7 +286,10 @@ describe('WorkoutService', () => {
     });
     expect(findWorkoutPlans).toHaveBeenCalledWith({
       where: {
-        trainingCycleId: cycle.id,
+        trainingPlanVersion: {
+          trainingCycleId: cycle.id,
+          status: TrainingPlanVersionStatus.ACTIVE,
+        },
         dayOfWeek: DayOfWeek.TUESDAY,
       },
       orderBy: {
@@ -290,6 +303,70 @@ describe('WorkoutService', () => {
 
     await expect(service.getTodayWorkout()).resolves.toBeNull();
     expect(findWorkoutPlans).not.toHaveBeenCalled();
+  });
+
+  it('calculates training adherence from distinct planned and completed session dates', async () => {
+    findTrainingCycle.mockResolvedValue(cycle);
+    findWorkoutPlans.mockResolvedValue([
+      { dayOfWeek: DayOfWeek.MONDAY },
+      { dayOfWeek: DayOfWeek.TUESDAY },
+      { dayOfWeek: DayOfWeek.THURSDAY },
+      { dayOfWeek: DayOfWeek.FRIDAY },
+    ]);
+    findWorkoutSessions.mockResolvedValue([
+      { date: new Date(2026, 6, 24) },
+      { date: new Date(2026, 6, 27) },
+    ]);
+
+    await expect(service.getTrainingAdherence(7)).resolves.toEqual({
+      days: 7,
+      plannedSessions: 4,
+      completedSessions: 2,
+      adherenceRate: 50,
+    });
+    expect(findWorkoutPlans).toHaveBeenCalledWith({
+      where: {
+        trainingPlanVersion: {
+          trainingCycleId: cycle.id,
+          status: TrainingPlanVersionStatus.ACTIVE,
+        },
+      },
+      select: {
+        dayOfWeek: true,
+      },
+      distinct: ['dayOfWeek'],
+    });
+    expect(findWorkoutSessions).toHaveBeenCalledWith({
+      where: {
+        userProfileId: cycle.userProfileId,
+        date: {
+          gte: new Date(2026, 6, 22),
+          lte: new Date(2026, 6, 28),
+        },
+        exerciseRecords: {
+          some: {
+            completed: true,
+          },
+        },
+      },
+      select: {
+        date: true,
+      },
+      distinct: ['date'],
+    });
+  });
+
+  it('returns insufficient adherence data when no active cycle exists', async () => {
+    findTrainingCycle.mockResolvedValue(null);
+
+    await expect(service.getTrainingAdherence()).resolves.toEqual({
+      days: 7,
+      plannedSessions: 0,
+      completedSessions: 0,
+      adherenceRate: null,
+    });
+    expect(findWorkoutPlans).not.toHaveBeenCalled();
+    expect(findWorkoutSessions).not.toHaveBeenCalled();
   });
 
   it('summarizes unchanged weight as stable and averages RPE by exercise', async () => {

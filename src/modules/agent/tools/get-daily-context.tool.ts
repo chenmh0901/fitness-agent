@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { AgentContextDto } from '../context/agent-context.dto';
 import { AgentContextService } from '../context/agent-context.service';
+import { CoachContextWithInsightsDto } from '../context/coach-context-with-insights.dto';
 import { AgentTool, JsonSchema } from './agent-tool.interface';
 
 @Injectable()
 export class GetDailyContextTool implements AgentTool {
   readonly name = 'get_daily_context';
-  readonly description = '获取用户当前完整的只读健身上下文，包括档案、训练、体重、睡眠和近期表现。';
+  readonly description =
+    '获取用户当前完整的只读 Coach Context、Coach Insights 和可执行 Recommendations，包括长期目标、训练执行率、体重、睡眠、营养、每日状态和近期训练表现。';
   readonly parameters: JsonSchema = {
     type: 'object',
     properties: {},
@@ -14,7 +15,7 @@ export class GetDailyContextTool implements AgentTool {
 
   constructor(private readonly agentContextService: AgentContextService) {}
 
-  execute(): Promise<AgentContextDto> {
+  execute(): Promise<CoachContextWithInsightsDto> {
     return this.agentContextService.buildContext();
   }
 }

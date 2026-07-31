@@ -1,46 +1,31 @@
 import { Injectable } from '@nestjs/common';
-import { SleepService } from '../../sleep/sleep.service';
-import { UserProfileService } from '../../user/user-profile.service';
-import { WeightService } from '../../weight/weight.service';
-import { WorkoutService } from '../../workout/workout.service';
-import { AgentContextDto } from './agent-context.dto';
+import { CoachAnalysisService } from '../../coach-insight/coach-analysis.service';
+import { CoachRecommendationService } from '../../coach-recommendation/coach-recommendation.service';
+import { CoachContextWithInsightsDto } from './coach-context-with-insights.dto';
+import { CoachContextService } from './coach-context.service';
 
 @Injectable()
 export class AgentContextService {
   constructor(
-    private readonly userProfileService: UserProfileService,
-    private readonly weightService: WeightService,
-    private readonly sleepService: SleepService,
-    private readonly workoutService: WorkoutService,
+    private readonly coachContextService: CoachContextService,
+    private readonly coachAnalysisService: CoachAnalysisService,
+    private readonly coachRecommendationService: CoachRecommendationService,
   ) {}
 
-  async buildContext(): Promise<AgentContextDto> {
-    const [
-      userProfile,
-      todayWorkout,
-      currentTrainingCycle,
-      weightTrend7Days,
-      weightTrend30Days,
-      sleepSummary7Days,
-      recentExercisePerformance,
-    ] = await Promise.all([
-      this.userProfileService.getProfile(),
-      this.workoutService.getTodayWorkout(),
-      this.workoutService.getCurrentTrainingCycle(),
-      this.weightService.getWeightTrend(7),
-      this.weightService.getWeightTrend(30),
-      this.sleepService.getRecentSleep(7),
-      this.workoutService.getRecentExercisePerformance(),
-    ]);
+  async buildContext(): Promise<CoachContextWithInsightsDto> {
+    const coachContext = await this.coachContextService.buildContext();
+    const { status, insights } = this.coachAnalysisService.analyze(coachContext);
+    const contextWithInsights = {
+      coachContext,
+      status,
+      insights,
+    };
+    const recommendations =
+      this.coachRecommendationService.generateRecommendations(contextWithInsights);
 
     return {
-      userProfile,
-      todayWorkout,
-      currentTrainingCycle,
-      weightTrend7Days,
-      weightTrend30Days,
-      sleepSummary7Days,
-      recentExercisePerformance,
+      ...contextWithInsights,
+      recommendations,
     };
   }
 }

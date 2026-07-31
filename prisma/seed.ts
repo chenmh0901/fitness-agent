@@ -2,10 +2,11 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
   DayOfWeek,
-  FitnessGoal,
+  ProfileFitnessGoal,
   PrismaClient,
   TrainingExperience,
   TrainingCycleStatus,
+  TrainingPlanVersionStatus,
 } from '../src/generated/prisma/client';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -21,7 +22,7 @@ const prisma = new PrismaClient({
 const profileData = {
   heightCm: 185,
   currentWeight: 91.7,
-  goal: FitnessGoal.FAT_LOSS,
+  goal: ProfileFitnessGoal.FAT_LOSS,
   trainingExperience: TrainingExperience.INTERMEDIATE,
   weeklyTrainingDays: 5,
   dailyCaloriesTarget: 2200,
@@ -309,7 +310,7 @@ async function main(): Promise<void> {
             data: {
               userProfileId: userProfile.id,
               name: '减脂周期 1',
-              goal: FitnessGoal.FAT_LOSS,
+              goal: ProfileFitnessGoal.FAT_LOSS,
               startDate,
               endDate,
               status: TrainingCycleStatus.ACTIVE,
@@ -319,34 +320,70 @@ async function main(): Promise<void> {
             where: { id: activeCycles[0].id },
             data: {
               name: '减脂周期 1',
-              goal: FitnessGoal.FAT_LOSS,
+              goal: ProfileFitnessGoal.FAT_LOSS,
               startDate,
               endDate,
               status: TrainingCycleStatus.ACTIVE,
             },
           });
 
-    await transaction.workoutPlan.deleteMany({
-      where: { trainingCycleId: trainingCycle.id },
+    let planVersion = await transaction.trainingPlanVersion.findFirst({
+      where: {
+        trainingCycleId: trainingCycle.id,
+        status: TrainingPlanVersionStatus.ACTIVE,
+      },
+      orderBy: {
+        versionNumber: 'desc',
+      },
     });
 
-    await transaction.workoutPlan.createMany({
-      data: workoutPlan.map((exercise) => ({
-        ...exercise,
-        trainingCycleId: trainingCycle.id,
-      })),
+    if (!planVersion) {
+      const versionAggregate = await transaction.trainingPlanVersion.aggregate({
+        where: {
+          trainingCycleId: trainingCycle.id,
+        },
+        _max: {
+          versionNumber: true,
+        },
+      });
+      planVersion = await transaction.trainingPlanVersion.create({
+        data: {
+          trainingCycleId: trainingCycle.id,
+          versionNumber: (versionAggregate._max.versionNumber ?? 0) + 1,
+          status: TrainingPlanVersionStatus.ACTIVE,
+          changeReason: 'Initial seeded training plan',
+        },
+      });
+    }
+
+    const existingWorkoutPlanCount = await transaction.workoutPlan.count({
+      where: {
+        trainingPlanVersionId: planVersion.id,
+      },
     });
+
+    if (existingWorkoutPlanCount === 0) {
+      await transaction.workoutPlan.createMany({
+        data: workoutPlan.map((exercise) => ({
+          ...exercise,
+          trainingPlanVersionId: planVersion.id,
+        })),
+      });
+    }
 
     return {
       userProfileId: userProfile.id,
       trainingCycleId: trainingCycle.id,
-      workoutPlanCount: workoutPlan.length,
+      trainingPlanVersionId: planVersion.id,
+      workoutPlanCount:
+        existingWorkoutPlanCount === 0 ? workoutPlan.length : existingWorkoutPlanCount,
     };
   });
 
   console.log('Fitness seed completed.');
   console.log(`UserProfile: ${result.userProfileId}`);
   console.log(`Active TrainingCycle: ${result.trainingCycleId}`);
+  console.log(`Active TrainingPlanVersion: ${result.trainingPlanVersionId}`);
   console.log(`WorkoutPlan exercises: ${result.workoutPlanCount}`);
 }
 

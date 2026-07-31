@@ -1,4 +1,4 @@
-import { FitnessGoal, TrainingExperience } from '../../generated/prisma/client';
+import { ProfileFitnessGoal, TrainingExperience } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserProfileService } from './user-profile.service';
 
@@ -22,7 +22,7 @@ describe('UserProfileService', () => {
       id: 'profile-id',
       heightCm: { toNumber: () => 178.5 },
       currentWeight: { toNumber: () => 75.2 },
-      goal: FitnessGoal.FAT_LOSS,
+      goal: ProfileFitnessGoal.FAT_LOSS,
       trainingExperience: TrainingExperience.INTERMEDIATE,
       weeklyTrainingDays: 4,
       dailyCaloriesTarget: 2200,
@@ -35,7 +35,7 @@ describe('UserProfileService', () => {
       id: 'profile-id',
       heightCm: 178.5,
       currentWeight: 75.2,
-      goal: FitnessGoal.FAT_LOSS,
+      goal: ProfileFitnessGoal.FAT_LOSS,
       trainingExperience: TrainingExperience.INTERMEDIATE,
       weeklyTrainingDays: 4,
       dailyCaloriesTarget: 2200,

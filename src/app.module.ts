@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AgentModule } from './modules/agent/agent.module';
+import { DailyStatusModule } from './modules/daily-status/daily-status.module';
+import { FitnessGoalModule } from './modules/fitness-goal/fitness-goal.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
+import { NutritionModule } from './modules/nutrition/nutrition.module';
 import { SleepModule } from './modules/sleep/sleep.module';
 import { UserModule } from './modules/user/user.module';
 import { WeightModule } from './modules/weight/weight.module';
@@ -18,6 +21,9 @@ import { PrismaModule } from './prisma/prisma.module';
     }),
     PrismaModule,
     AgentModule,
+    FitnessGoalModule,
+    NutritionModule,
+    DailyStatusModule,
     UserModule,
     WorkoutModule,
     WeightModule,

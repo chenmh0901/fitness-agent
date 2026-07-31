@@ -8,12 +8,76 @@ datasource db {
   provider = "postgresql"
 }
 
-enum FitnessGoal {
+enum ProfileFitnessGoal {
   FAT_LOSS    @map("fat_loss")
   MUSCLE_GAIN @map("muscle_gain")
   MAINTENANCE @map("maintenance")
 
   @@map("fitness_goal")
+}
+
+enum FitnessGoalType {
+  FAT_LOSS    @map("fat_loss")
+  MUSCLE_GAIN @map("muscle_gain")
+  STRENGTH    @map("strength")
+
+  @@map("coach_fitness_goal_type")
+}
+
+enum FitnessGoalPriority {
+  KEEP_STRENGTH    @map("keep_strength")
+  MAXIMUM_FAT_LOSS @map("maximum_fat_loss")
+  BALANCED         @map("balanced")
+
+  @@map("fitness_goal_priority")
+}
+
+enum FitnessGoalStatus {
+  ACTIVE    @map("active")
+  COMPLETED @map("completed")
+  CANCELLED @map("cancelled")
+
+  @@map("fitness_goal_status")
+}
+
+enum CoachInsightType {
+  WEIGHT    @map("weight")
+  TRAINING  @map("training")
+  NUTRITION @map("nutrition")
+  RECOVERY  @map("recovery")
+
+  @@map("coach_insight_type")
+}
+
+enum CoachInsightSeverity {
+  NORMAL   @map("normal")
+  WARNING  @map("warning")
+  CRITICAL @map("critical")
+
+  @@map("coach_insight_severity")
+}
+
+enum CoachAdjustmentRecommendationType {
+  NUTRITION_CALORIES @map("nutrition_calories")
+  TRAINING_RPE       @map("training_rpe")
+  TRAINING_PLAN      @map("training_plan")
+
+  @@map("coach_adjustment_recommendation_type")
+}
+
+enum TrainingPlanVersionStatus {
+  ACTIVE   @map("active")
+  ARCHIVED @map("archived")
+
+  @@map("training_plan_version_status")
+}
+
+enum CoachAdjustmentStatus {
+  PENDING  @map("pending")
+  ACCEPTED @map("accepted")
+  REJECTED @map("rejected")
+
+  @@map("coach_adjustment_status")
 }
 
 enum TrainingExperience {
@@ -58,7 +122,7 @@ model UserProfile {
   heightCm            Decimal            @db.Decimal(5, 2)
   /// Current weight snapshot in kilograms; WeightRecord stores the history.
   currentWeight       Decimal            @db.Decimal(5, 2)
-  goal                FitnessGoal
+  goal                ProfileFitnessGoal
   trainingExperience  TrainingExperience
   weeklyTrainingDays  Int
   /// Daily energy target in kilocalories.
@@ -71,47 +135,73 @@ model UserProfile {
   workoutSessions     WorkoutSession[]
   weightRecords       WeightRecord[]
   sleepRecords        SleepRecord[]
+  fitnessGoals        FitnessGoal[]
+  nutritionRecords    NutritionRecord[]
+  dailyStatuses       DailyStatus[]
+  coachInsights       CoachInsight[]
+  coachAdjustments    CoachAdjustment[]
 
   @@map("user_profiles")
 }
 
 model TrainingCycle {
-  id              String              @id @default(uuid()) @db.Uuid
-  userProfileId   String              @db.Uuid
-  name            String              @db.VarChar(120)
-  goal            FitnessGoal
-  startDate       DateTime            @db.Date
-  endDate         DateTime            @db.Date
-  status          TrainingCycleStatus @default(PLANNED)
-  createdAt       DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime            @updatedAt @db.Timestamptz(3)
-  userProfile     UserProfile         @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
-  workoutPlans    WorkoutPlan[]
-  workoutSessions WorkoutSession[]
+  id               String                @id @default(uuid()) @db.Uuid
+  userProfileId    String                @db.Uuid
+  name             String                @db.VarChar(120)
+  goal             ProfileFitnessGoal
+  startDate        DateTime              @db.Date
+  endDate          DateTime              @db.Date
+  status           TrainingCycleStatus   @default(PLANNED)
+  createdAt        DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime              @updatedAt @db.Timestamptz(3)
+  userProfile      UserProfile           @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+  planVersions     TrainingPlanVersion[]
+  workoutSessions  WorkoutSession[]
+  coachAdjustments CoachAdjustment[]
 
   @@index([userProfileId, status])
   @@index([userProfileId, startDate])
   @@map("training_cycles")
 }
 
-model WorkoutPlan {
-  id              String        @id @default(uuid()) @db.Uuid
-  trainingCycleId String        @db.Uuid
-  dayOfWeek       DayOfWeek
-  category        String        @db.VarChar(50)
-  exerciseName    String        @db.VarChar(150)
-  sets            Int
-  reps            Int
-  /// Target load in kilograms; null supports bodyweight exercises.
-  targetWeight    Decimal?      @db.Decimal(6, 2)
-  targetRpe       Decimal?      @db.Decimal(3, 1)
-  order           Int
-  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime      @updatedAt @db.Timestamptz(3)
-  trainingCycle   TrainingCycle @relation(fields: [trainingCycleId], references: [id], onDelete: Cascade)
+model TrainingPlanVersion {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  trainingCycleId      String                    @db.Uuid
+  versionNumber        Int
+  status               TrainingPlanVersionStatus @default(ACTIVE)
+  changeReason         String                    @db.Text
+  createdFromVersionId String?                   @db.Uuid
+  createdAt            DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                  @default(now()) @updatedAt @db.Timestamptz(3)
+  trainingCycle        TrainingCycle             @relation(fields: [trainingCycleId], references: [id], onDelete: Cascade)
+  workoutPlans         WorkoutPlan[]
+  createdFromVersion   TrainingPlanVersion?      @relation("TrainingPlanVersionHistory", fields: [createdFromVersionId], references: [id], onDelete: SetNull)
+  derivedVersions      TrainingPlanVersion[]     @relation("TrainingPlanVersionHistory")
 
-  @@unique([trainingCycleId, dayOfWeek, order])
-  @@index([trainingCycleId, category])
+  @@unique([trainingCycleId, versionNumber])
+  @@index([trainingCycleId, status])
+  @@index([createdFromVersionId])
+  @@map("training_plan_versions")
+}
+
+model WorkoutPlan {
+  id                    String              @id @default(uuid()) @db.Uuid
+  trainingPlanVersionId String              @db.Uuid
+  dayOfWeek             DayOfWeek
+  category              String              @db.VarChar(50)
+  exerciseName          String              @db.VarChar(150)
+  sets                  Int
+  reps                  Int
+  /// Target load in kilograms; null supports bodyweight exercises.
+  targetWeight          Decimal?            @db.Decimal(6, 2)
+  targetRpe             Decimal?            @db.Decimal(3, 1)
+  order                 Int
+  createdAt             DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime            @updatedAt @db.Timestamptz(3)
+  trainingPlanVersion   TrainingPlanVersion @relation(fields: [trainingPlanVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingPlanVersionId, dayOfWeek, order])
+  @@index([trainingPlanVersionId, category])
   @@map("workout_plans")
 }
 
@@ -183,4 +273,94 @@ model SleepRecord {
 
   @@unique([userProfileId, date])
   @@map("sleep_records")
+}
+
+model FitnessGoal {
+  id            String              @id @default(uuid()) @db.Uuid
+  userId        String              @db.Uuid
+  type          FitnessGoalType
+  startWeight   Decimal             @db.Decimal(5, 2)
+  targetWeight  Decimal             @db.Decimal(5, 2)
+  targetBodyFat Decimal?            @db.Decimal(4, 1)
+  startDate     DateTime            @db.Date
+  targetDate    DateTime            @db.Date
+  durationWeeks Int
+  priority      FitnessGoalPriority
+  status        FitnessGoalStatus   @default(ACTIVE)
+  createdAt     DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime            @default(now()) @updatedAt @db.Timestamptz(3)
+  userProfile   UserProfile         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, startDate])
+  @@map("fitness_goals")
+}
+
+model NutritionRecord {
+  id          String      @id @default(uuid()) @db.Uuid
+  userId      String      @db.Uuid
+  date        DateTime    @db.Date
+  calories    Int
+  protein     Decimal     @db.Decimal(6, 2)
+  carbs       Decimal     @db.Decimal(6, 2)
+  fat         Decimal     @db.Decimal(6, 2)
+  notes       String?     @db.Text
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime    @default(now()) @updatedAt @db.Timestamptz(3)
+  userProfile UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("nutrition_records")
+}
+
+model DailyStatus {
+  id             String      @id @default(uuid()) @db.Uuid
+  userId         String      @db.Uuid
+  date           DateTime    @db.Date
+  energyLevel    Int
+  fatigueLevel   Int
+  muscleSoreness Int
+  stressLevel    Int
+  notes          String?     @db.Text
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime    @default(now()) @updatedAt @db.Timestamptz(3)
+  userProfile    UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("daily_statuses")
+}
+
+model CoachInsight {
+  id          String               @id @default(uuid()) @db.Uuid
+  userId      String               @db.Uuid
+  date        DateTime             @db.Date
+  type        CoachInsightType
+  severity    CoachInsightSeverity
+  content     String               @db.Text
+  metadata    Json
+  createdAt   DateTime             @default(now()) @db.Timestamptz(3)
+  userProfile UserProfile          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@index([userId, type, severity])
+  @@map("coach_insights")
+}
+
+model CoachAdjustment {
+  id                 String                            @id @default(uuid()) @db.Uuid
+  userId             String                            @db.Uuid
+  cycleId            String                            @db.Uuid
+  recommendationType CoachAdjustmentRecommendationType
+  oldValue           Json
+  newValue           Json
+  reason             String                            @db.Text
+  status             CoachAdjustmentStatus             @default(PENDING)
+  createdAt          DateTime                          @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                          @default(now()) @updatedAt @db.Timestamptz(3)
+  userProfile        UserProfile                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trainingCycle      TrainingCycle                     @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([cycleId, status])
+  @@map("coach_adjustments")
 }

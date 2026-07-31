@@ -1,5 +1,5 @@
-import { AgentContextDto } from '../context/agent-context.dto';
 import { AgentContextService } from '../context/agent-context.service';
+import { CoachContextWithInsightsDto } from '../context/coach-context-with-insights.dto';
 import { GetDailyContextTool } from './get-daily-context.tool';
 
 describe('GetDailyContextTool', () => {
@@ -15,7 +15,9 @@ describe('GetDailyContextTool', () => {
 
   it('exposes stable metadata', () => {
     expect(tool.name).toBe('get_daily_context');
-    expect(tool.description).toContain('只读健身上下文');
+    expect(tool.description).toContain('只读 Coach Context');
+    expect(tool.description).toContain('Coach Insights');
+    expect(tool.description).toContain('Recommendations');
     expect(tool.parameters).toEqual({
       type: 'object',
       properties: {},
@@ -23,7 +25,12 @@ describe('GetDailyContextTool', () => {
   });
 
   it('delegates execution to AgentContextService', async () => {
-    const context = { userProfile: null } as AgentContextDto;
+    const context = {
+      coachContext: { userProfile: null },
+      status: 'insufficient_data',
+      insights: [],
+      recommendations: [],
+    } as unknown as CoachContextWithInsightsDto;
     buildContext.mockResolvedValue(context);
 
     await expect(tool.execute()).resolves.toBe(context);

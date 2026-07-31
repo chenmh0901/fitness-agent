@@ -7,6 +7,14 @@ import { AgentController } from './modules/agent/agent.controller';
 import { AgentService } from './modules/agent/agent.service';
 import { DailyFitnessController } from './modules/agent/daily-fitness/daily-fitness.controller';
 import { DailyFitnessService } from './modules/agent/daily-fitness/daily-fitness.service';
+import { DailyStatusController } from './modules/daily-status/daily-status.controller';
+import { DailyStatusService } from './modules/daily-status/daily-status.service';
+import { FitnessGoalController } from './modules/fitness-goal/fitness-goal.controller';
+import { FitnessGoalService } from './modules/fitness-goal/fitness-goal.service';
+import { NutritionController } from './modules/nutrition/nutrition.controller';
+import { NutritionService } from './modules/nutrition/nutrition.service';
+import { TrainingPlanVersionController } from './modules/coach-plan-version/training-plan-version.controller';
+import { TrainingPlanVersionService } from './modules/coach-plan-version/training-plan-version.service';
 import { WorkoutController } from './modules/workout/workout.controller';
 import { WorkoutService } from './modules/workout/workout.service';
 
@@ -15,13 +23,27 @@ describe('Fitness Agent HTTP API (e2e)', () => {
   const chat = jest.fn();
   const recordWorkout = jest.fn();
   const recordWorkoutFeedback = jest.fn();
+  const createGoal = jest.fn();
+  const getActiveGoal = jest.fn();
+  const createNutrition = jest.fn();
+  const createDailyStatus = jest.fn();
+  const getCurrentPlanVersion = jest.fn();
+  const getPlanVersionHistory = jest.fn();
   const loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation();
   let app: INestApplication;
   let server: Server;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      controllers: [DailyFitnessController, AgentController, WorkoutController],
+      controllers: [
+        DailyFitnessController,
+        AgentController,
+        WorkoutController,
+        FitnessGoalController,
+        NutritionController,
+        DailyStatusController,
+        TrainingPlanVersionController,
+      ],
       providers: [
         {
           provide: DailyFitnessService,
@@ -40,6 +62,32 @@ describe('Fitness Agent HTTP API (e2e)', () => {
           useValue: {
             recordWorkout,
             recordWorkoutFeedback,
+          },
+        },
+        {
+          provide: FitnessGoalService,
+          useValue: {
+            createGoal,
+            getActiveGoal,
+          },
+        },
+        {
+          provide: NutritionService,
+          useValue: {
+            createRecord: createNutrition,
+          },
+        },
+        {
+          provide: DailyStatusService,
+          useValue: {
+            createStatus: createDailyStatus,
+          },
+        },
+        {
+          provide: TrainingPlanVersionService,
+          useValue: {
+            getActiveVersion: getCurrentPlanVersion,
+            getVersionHistory: getPlanVersionHistory,
           },
         },
       ],
@@ -61,6 +109,12 @@ describe('Fitness Agent HTTP API (e2e)', () => {
     chat.mockReset();
     recordWorkout.mockReset();
     recordWorkoutFeedback.mockReset();
+    createGoal.mockReset();
+    getActiveGoal.mockReset();
+    createNutrition.mockReset();
+    createDailyStatus.mockReset();
+    getCurrentPlanVersion.mockReset();
+    getPlanVersionHistory.mockReset();
   });
 
   it('GET /api/daily/today returns the current daily summary', async () => {
@@ -250,5 +304,124 @@ describe('Fitness Agent HTTP API (e2e)', () => {
       .expect(400);
 
     expect(recordWorkoutFeedback).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/goals creates a long-term fitness goal', async () => {
+    createGoal.mockResolvedValue({ id: 'goal-id', status: 'ACTIVE' });
+
+    await request(server)
+      .post('/api/goals')
+      .send({
+        type: 'FAT_LOSS',
+        startWeight: 91.7,
+        targetWeight: 85,
+        targetBodyFat: 16,
+        startDate: '2026-08-01',
+        targetDate: '2026-09-26',
+        durationWeeks: 8,
+        priority: 'KEEP_STRENGTH',
+      })
+      .expect(201, {
+        id: 'goal-id',
+        status: 'ACTIVE',
+      });
+    expect(createGoal).toHaveBeenCalledWith({
+      type: 'FAT_LOSS',
+      startWeight: 91.7,
+      targetWeight: 85,
+      targetBodyFat: 16,
+      startDate: new Date('2026-08-01T00:00:00.000Z'),
+      targetDate: new Date('2026-09-26T00:00:00.000Z'),
+      durationWeeks: 8,
+      priority: 'KEEP_STRENGTH',
+    });
+  });
+
+  it('GET /api/goals/active returns the active goal', async () => {
+    getActiveGoal.mockResolvedValue({ id: 'goal-id', status: 'ACTIVE' });
+
+    await request(server).get('/api/goals/active').expect(200, {
+      id: 'goal-id',
+      status: 'ACTIVE',
+    });
+    expect(getActiveGoal).toHaveBeenCalledTimes(1);
+  });
+
+  it('POST /api/nutrition records daily macros', async () => {
+    createNutrition.mockResolvedValue({ id: 'nutrition-id' });
+
+    await request(server)
+      .post('/api/nutrition')
+      .send({
+        calories: 2200,
+        protein: 160,
+        carbs: 250,
+        fat: 60,
+        date: '2026-08-01',
+      })
+      .expect(201, {
+        id: 'nutrition-id',
+      });
+    expect(createNutrition).toHaveBeenCalledWith({
+      calories: 2200,
+      protein: 160,
+      carbs: 250,
+      fat: 60,
+      date: new Date('2026-08-01T00:00:00.000Z'),
+    });
+  });
+
+  it('POST /api/status records subjective daily status', async () => {
+    createDailyStatus.mockResolvedValue({ id: 'status-id' });
+
+    await request(server)
+      .post('/api/status')
+      .send({
+        energyLevel: 7,
+        fatigueLevel: 3,
+        muscleSoreness: 2,
+        stressLevel: 4,
+        date: '2026-08-01',
+      })
+      .expect(201, {
+        id: 'status-id',
+      });
+    expect(createDailyStatus).toHaveBeenCalledWith({
+      energyLevel: 7,
+      fatigueLevel: 3,
+      muscleSoreness: 2,
+      stressLevel: 4,
+      date: new Date('2026-08-01T00:00:00.000Z'),
+    });
+  });
+
+  it('GET /api/training-plan/current returns the active plan version', async () => {
+    getCurrentPlanVersion.mockResolvedValue({
+      id: 'version-2',
+      versionNumber: 2,
+      status: 'ACTIVE',
+      workoutPlans: [],
+    });
+
+    await request(server).get('/api/training-plan/current').expect(200, {
+      id: 'version-2',
+      versionNumber: 2,
+      status: 'ACTIVE',
+      workoutPlans: [],
+    });
+    expect(getCurrentPlanVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it('GET /api/training-plan/history returns all plan versions', async () => {
+    getPlanVersionHistory.mockResolvedValue([
+      { id: 'version-2', versionNumber: 2, status: 'ACTIVE' },
+      { id: 'version-1', versionNumber: 1, status: 'ARCHIVED' },
+    ]);
+
+    await request(server).get('/api/training-plan/history').expect(200, [
+      { id: 'version-2', versionNumber: 2, status: 'ACTIVE' },
+      { id: 'version-1', versionNumber: 1, status: 'ARCHIVED' },
+    ]);
+    expect(getPlanVersionHistory).toHaveBeenCalledTimes(1);
   });
 });

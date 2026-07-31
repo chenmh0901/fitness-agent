@@ -1,4 +1,10 @@
 import { Module } from '@nestjs/common';
+import { CoachAdjustmentModule } from '../coach-adjustment/coach-adjustment.module';
+import { CoachInsightModule } from '../coach-insight/coach-insight.module';
+import { CoachRecommendationModule } from '../coach-recommendation/coach-recommendation.module';
+import { DailyStatusModule } from '../daily-status/daily-status.module';
+import { FitnessGoalModule } from '../fitness-goal/fitness-goal.module';
+import { NutritionModule } from '../nutrition/nutrition.module';
 import { SleepModule } from '../sleep/sleep.module';
 import { UserModule } from '../user/user.module';
 import { WeightModule } from '../weight/weight.module';
@@ -6,6 +12,7 @@ import { WorkoutModule } from '../workout/workout.module';
 import { AgentController } from './agent.controller';
 import { AgentService } from './agent.service';
 import { AgentContextService } from './context/agent-context.service';
+import { CoachContextService } from './context/coach-context.service';
 import { DailyFitnessController } from './daily-fitness/daily-fitness.controller';
 import { DailyFitnessService } from './daily-fitness/daily-fitness.service';
 import { AgentLoopService } from './execution/agent-loop.service';
@@ -21,10 +28,22 @@ import { RecordWeightTool } from './tools/write/record-weight.tool';
 import { RecordWorkoutTool } from './tools/write/record-workout.tool';
 
 @Module({
-  imports: [UserModule, WeightModule, SleepModule, WorkoutModule],
+  imports: [
+    UserModule,
+    CoachAdjustmentModule,
+    CoachInsightModule,
+    CoachRecommendationModule,
+    FitnessGoalModule,
+    WeightModule,
+    SleepModule,
+    NutritionModule,
+    DailyStatusModule,
+    WorkoutModule,
+  ],
   controllers: [DailyFitnessController, AgentController],
   providers: [
     AgentContextService,
+    CoachContextService,
     DailyFitnessService,
     PromptBuilderService,
     AgentLoopService,
@@ -71,6 +90,7 @@ import { RecordWorkoutTool } from './tools/write/record-workout.tool';
   ],
   exports: [
     AgentContextService,
+    CoachContextService,
     DailyFitnessService,
     PromptBuilderService,
     AgentLoopService,

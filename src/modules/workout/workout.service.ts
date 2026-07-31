@@ -1,12 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import { DayOfWeek, TrainingCycle, TrainingCycleStatus } from '../../generated/prisma/client';
-import { startOfLocalDay } from '../../common/utils/date.util';
+import {
+  DayOfWeek,
+  TrainingCycle,
+  TrainingCycleStatus,
+  TrainingPlanVersionStatus,
+} from '../../generated/prisma/client';
+import {
+  assertPositiveInteger,
+  startOfLocalDay,
+  startOfRecentDayWindow,
+} from '../../common/utils/date.util';
 import { roundTo } from '../../common/utils/number.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateWorkoutFeedbackDto } from './dto/create-workout-feedback.dto';
 import { CreateWorkoutRecordDto } from './dto/create-workout-record.dto';
 import { ExercisePerformanceDto, ExerciseProgressTrend } from './dto/exercise-performance.dto';
 import { TodayWorkoutDto } from './dto/today-workout.dto';
+import { TrainingAdherenceDto } from './dto/training-adherence.dto';
 import { TrainingCycleDto } from './dto/training-cycle.dto';
 
 const RECENT_EXERCISE_RECORD_LIMIT = 50;
@@ -123,7 +133,10 @@ export class WorkoutService {
     const dayOfWeek = DAY_OF_WEEK_BY_JAVASCRIPT_DAY[today.getDay()];
     const exercises = await this.prisma.workoutPlan.findMany({
       where: {
-        trainingCycleId: trainingCycle.id,
+        trainingPlanVersion: {
+          trainingCycleId: trainingCycle.id,
+          status: TrainingPlanVersionStatus.ACTIVE,
+        },
         dayOfWeek,
       },
       orderBy: {
@@ -152,6 +165,84 @@ export class WorkoutService {
     const trainingCycle = await this.findCurrentTrainingCycle(startOfLocalDay());
 
     return trainingCycle ? this.toTrainingCycleDto(trainingCycle) : null;
+  }
+
+  async getTrainingAdherence(days = 7): Promise<TrainingAdherenceDto> {
+    assertPositiveInteger(days, 'days');
+
+    const referenceDate = startOfLocalDay();
+    const trainingCycle = await this.findCurrentTrainingCycle(referenceDate);
+
+    if (!trainingCycle) {
+      return {
+        days,
+        plannedSessions: 0,
+        completedSessions: 0,
+        adherenceRate: null,
+      };
+    }
+
+    const requestedStartDate = startOfRecentDayWindow(days, referenceDate);
+    const cycleStartDate = startOfLocalDay(trainingCycle.startDate);
+    const cycleEndDate = startOfLocalDay(trainingCycle.endDate);
+    const windowStart =
+      cycleStartDate > requestedStartDate ? cycleStartDate : requestedStartDate;
+    const windowEnd = cycleEndDate < referenceDate ? cycleEndDate : referenceDate;
+
+    if (windowStart > windowEnd) {
+      return {
+        days,
+        plannedSessions: 0,
+        completedSessions: 0,
+        adherenceRate: null,
+      };
+    }
+
+    const [plannedDays, completedSessionDates] = await Promise.all([
+      this.prisma.workoutPlan.findMany({
+        where: {
+          trainingPlanVersion: {
+            trainingCycleId: trainingCycle.id,
+            status: TrainingPlanVersionStatus.ACTIVE,
+          },
+        },
+        select: {
+          dayOfWeek: true,
+        },
+        distinct: ['dayOfWeek'],
+      }),
+      this.prisma.workoutSession.findMany({
+        where: {
+          userProfileId: trainingCycle.userProfileId,
+          date: {
+            gte: windowStart,
+            lte: windowEnd,
+          },
+          exerciseRecords: {
+            some: {
+              completed: true,
+            },
+          },
+        },
+        select: {
+          date: true,
+        },
+        distinct: ['date'],
+      }),
+    ]);
+    const plannedDaySet = new Set(plannedDays.map(({ dayOfWeek }) => dayOfWeek));
+    const plannedSessions = this.countPlannedSessions(windowStart, windowEnd, plannedDaySet);
+    const completedSessions = completedSessionDates.length;
+
+    return {
+      days,
+      plannedSessions,
+      completedSessions,
+      adherenceRate:
+        plannedSessions > 0
+          ? roundTo(Math.min(completedSessions / plannedSessions, 1) * 100)
+          : null,
+    };
   }
 
   async getRecentExercisePerformance(): Promise<ExercisePerformanceDto[]> {
@@ -260,6 +351,27 @@ export class WorkoutService {
         startDate: 'desc',
       },
     });
+  }
+
+  private countPlannedSessions(
+    windowStart: Date,
+    windowEnd: Date,
+    plannedDays: ReadonlySet<DayOfWeek>,
+  ): number {
+    let count = 0;
+    const cursor = new Date(windowStart);
+
+    while (cursor <= windowEnd) {
+      const dayOfWeek = DAY_OF_WEEK_BY_JAVASCRIPT_DAY[cursor.getDay()];
+
+      if (plannedDays.has(dayOfWeek)) {
+        count += 1;
+      }
+
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return count;
   }
 
   private toTrainingCycleDto(trainingCycle: TrainingCycle): TrainingCycleDto {
