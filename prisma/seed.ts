@@ -2,12 +2,17 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
   DayOfWeek,
+  Prisma,
   ProfileFitnessGoal,
   PrismaClient,
   TrainingExperience,
   TrainingCycleStatus,
   TrainingPlanVersionStatus,
 } from '../src/generated/prisma/client';
+import {
+  DEFAULT_EXERCISES,
+  DEFAULT_TRAINING_TEMPLATES,
+} from '../src/modules/coach-plan-generator/training-plan-catalog';
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -266,10 +271,93 @@ function getCurrentCycleDates(): { startDate: Date; endDate: Date } {
   return { startDate, endDate };
 }
 
+async function seedTrainingCatalog(
+  transaction: Prisma.TransactionClient,
+): Promise<void> {
+  const exerciseIdsByName = new Map<string, string>();
+
+  for (const exerciseData of DEFAULT_EXERCISES) {
+    const exercise = await transaction.exercise.upsert({
+      where: {
+        name: exerciseData.name,
+      },
+      update: {
+        category: exerciseData.category,
+        muscleGroup: exerciseData.muscleGroup,
+        equipment: exerciseData.equipment,
+        difficulty: exerciseData.difficulty,
+        description: exerciseData.description,
+      },
+      create: exerciseData,
+    });
+    exerciseIdsByName.set(exercise.name, exercise.id);
+
+    await transaction.workoutPlan.updateMany({
+      where: {
+        exerciseId: null,
+        exerciseName: exercise.name,
+      },
+      data: {
+        exerciseId: exercise.id,
+      },
+    });
+  }
+
+  for (const templateData of DEFAULT_TRAINING_TEMPLATES) {
+    const template = await transaction.trainingTemplate.upsert({
+      where: {
+        name: templateData.name,
+      },
+      update: {
+        goal: templateData.goal,
+        experience: templateData.experience,
+        daysPerWeek: templateData.daysPerWeek,
+      },
+      create: {
+        name: templateData.name,
+        goal: templateData.goal,
+        experience: templateData.experience,
+        daysPerWeek: templateData.daysPerWeek,
+      },
+    });
+
+    await transaction.trainingTemplateExercise.deleteMany({
+      where: {
+        trainingTemplateId: template.id,
+      },
+    });
+    await transaction.trainingTemplateExercise.createMany({
+      data: templateData.exercises.map((templateExercise) => {
+        const exerciseId = exerciseIdsByName.get(templateExercise.exerciseName);
+
+        if (!exerciseId) {
+          throw new Error(
+            `Template ${template.name} references an unknown exercise: ${templateExercise.exerciseName}`,
+          );
+        }
+
+        return {
+          trainingTemplateId: template.id,
+          exerciseId,
+          dayOfWeek: templateExercise.dayOfWeek,
+          category: templateExercise.category,
+          sets: templateExercise.sets,
+          reps: templateExercise.reps,
+          targetWeight: templateExercise.targetWeight,
+          targetRpe: templateExercise.targetRpe,
+          order: templateExercise.order,
+        };
+      }),
+    });
+  }
+}
+
 async function main(): Promise<void> {
   const { startDate, endDate } = getCurrentCycleDates();
 
   const result = await prisma.$transaction(async (transaction) => {
+    await seedTrainingCatalog(transaction);
+
     const existingProfiles = await transaction.userProfile.findMany({
       select: { id: true },
       orderBy: { createdAt: 'asc' },

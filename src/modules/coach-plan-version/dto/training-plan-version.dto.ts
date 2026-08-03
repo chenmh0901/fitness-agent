@@ -4,6 +4,11 @@ import { TrainingPlanItemDto } from './training-plan-item.dto';
 export class TrainingPlanVersionDto {
   id: string;
   trainingCycleId: string;
+  sourceTemplateId: string | null;
+  sourceTemplate: {
+    id: string;
+    name: string;
+  } | null;
   versionNumber: number;
   status: TrainingPlanVersionStatus;
   changeReason: string;

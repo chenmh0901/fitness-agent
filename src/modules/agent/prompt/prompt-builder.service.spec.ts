@@ -147,6 +147,11 @@ describe('PromptBuilderService', () => {
       currentPlanVersion: {
         id: 'plan-version-2',
         trainingCycleId: 'cycle-id',
+        sourceTemplateId: 'template-id',
+        sourceTemplate: {
+          id: 'template-id',
+          name: 'fat_loss_intermediate_5_days',
+        },
         versionNumber: 2,
         status: TrainingPlanVersionStatus.ACTIVE,
         changeReason: 'reduce fatigue',
@@ -163,6 +168,13 @@ describe('PromptBuilderService', () => {
           createdAt: date,
         },
       ],
+      generatedPlan: {
+        method: 'deterministic_template',
+        templateId: 'template-id',
+        templateName: 'fat_loss_intermediate_5_days',
+        currentVersion: 2,
+        generatedAt: date,
+      },
     };
     const context: CoachContextWithInsightsDto = {
       coachContext,
@@ -209,6 +221,10 @@ describe('PromptBuilderService', () => {
     expect(messages[0].content).toContain('"versionNumber": 2');
     expect(messages[0].content).toContain('"fromVersion": 1');
     expect(messages[0].content).toContain('"toVersion": 2');
+    expect(messages[0].content).toContain('generatedPlan');
+    expect(messages[0].content).toContain('fat_loss_intermediate_5_days');
+    expect(messages[0].content).toContain('WorkoutPlan');
+    expect(messages[0].content).toContain('WorkoutSession');
   });
 
   it('rejects an empty user message', () => {

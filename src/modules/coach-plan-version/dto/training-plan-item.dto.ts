@@ -1,6 +1,7 @@
 import { DayOfWeek } from '../../../generated/prisma/client';
 
 export class TrainingPlanItemInputDto {
+  exerciseId?: string | null;
   dayOfWeek: DayOfWeek;
   category: string;
   exerciseName: string;

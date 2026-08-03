@@ -9,6 +9,8 @@ import { DailyFitnessController } from './modules/agent/daily-fitness/daily-fitn
 import { DailyFitnessService } from './modules/agent/daily-fitness/daily-fitness.service';
 import { DailyStatusController } from './modules/daily-status/daily-status.controller';
 import { DailyStatusService } from './modules/daily-status/daily-status.service';
+import { CoachPlanGeneratorController } from './modules/coach-plan-generator/coach-plan-generator.controller';
+import { CoachPlanGeneratorService } from './modules/coach-plan-generator/coach-plan-generator.service';
 import { FitnessGoalController } from './modules/fitness-goal/fitness-goal.controller';
 import { FitnessGoalService } from './modules/fitness-goal/fitness-goal.service';
 import { NutritionController } from './modules/nutrition/nutrition.controller';
@@ -29,6 +31,7 @@ describe('Fitness Agent HTTP API (e2e)', () => {
   const createDailyStatus = jest.fn();
   const getCurrentPlanVersion = jest.fn();
   const getPlanVersionHistory = jest.fn();
+  const generateTrainingPlan = jest.fn();
   const loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation();
   let app: INestApplication;
   let server: Server;
@@ -43,6 +46,7 @@ describe('Fitness Agent HTTP API (e2e)', () => {
         NutritionController,
         DailyStatusController,
         TrainingPlanVersionController,
+        CoachPlanGeneratorController,
       ],
       providers: [
         {
@@ -90,6 +94,12 @@ describe('Fitness Agent HTTP API (e2e)', () => {
             getVersionHistory: getPlanVersionHistory,
           },
         },
+        {
+          provide: CoachPlanGeneratorService,
+          useValue: {
+            generatePlan: generateTrainingPlan,
+          },
+        },
       ],
     }).compile();
 
@@ -115,6 +125,7 @@ describe('Fitness Agent HTTP API (e2e)', () => {
     createDailyStatus.mockReset();
     getCurrentPlanVersion.mockReset();
     getPlanVersionHistory.mockReset();
+    generateTrainingPlan.mockReset();
   });
 
   it('GET /api/daily/today returns the current daily summary', async () => {
@@ -410,6 +421,44 @@ describe('Fitness Agent HTTP API (e2e)', () => {
       workoutPlans: [],
     });
     expect(getCurrentPlanVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it('POST /api/training-plan/generate creates a deterministic initial plan', async () => {
+    generateTrainingPlan.mockResolvedValue({
+      cycle: { id: 'cycle-id', status: 'ACTIVE' },
+      version: { id: 'version-id', versionNumber: 1, status: 'ACTIVE' },
+      workouts: [{ id: 'workout-id', exerciseName: 'barbell bench press' }],
+    });
+
+    await request(server)
+      .post('/api/training-plan/generate')
+      .send({
+        goal: 'FAT_LOSS',
+        experience: 'INTERMEDIATE',
+        daysPerWeek: 5,
+      })
+      .expect(201, {
+        cycle: { id: 'cycle-id', status: 'ACTIVE' },
+        version: { id: 'version-id', versionNumber: 1, status: 'ACTIVE' },
+        workouts: [{ id: 'workout-id', exerciseName: 'barbell bench press' }],
+      });
+    expect(generateTrainingPlan).toHaveBeenCalledWith({
+      goal: 'FAT_LOSS',
+      experience: 'INTERMEDIATE',
+      daysPerWeek: 5,
+    });
+  });
+
+  it('POST /api/training-plan/generate rejects invalid generation input', async () => {
+    await request(server)
+      .post('/api/training-plan/generate')
+      .send({
+        goal: 'FAT_LOSS',
+        experience: 'INTERMEDIATE',
+        daysPerWeek: 0,
+      })
+      .expect(400);
+    expect(generateTrainingPlan).not.toHaveBeenCalled();
   });
 
   it('GET /api/training-plan/history returns all plan versions', async () => {

@@ -116,6 +116,7 @@ describe('CoachInsightService', () => {
       recentAdjustments: [],
       currentPlanVersion: null,
       recentPlanChanges: [],
+      generatedPlan: null,
       ...overrides,
     };
   }

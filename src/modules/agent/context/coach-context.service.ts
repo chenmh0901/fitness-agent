@@ -78,6 +78,15 @@ export class CoachContextService {
       currentPlanVersion,
       recentPlanChanges:
         this.trainingPlanVersionService.getRecentPlanChanges(planVersionHistory),
+      generatedPlan: currentPlanVersion?.sourceTemplate
+        ? {
+            method: 'deterministic_template',
+            templateId: currentPlanVersion.sourceTemplate.id,
+            templateName: currentPlanVersion.sourceTemplate.name,
+            currentVersion: currentPlanVersion.versionNumber,
+            generatedAt: currentPlanVersion.createdAt,
+          }
+        : null,
     };
   }
 }

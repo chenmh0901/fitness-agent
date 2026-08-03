@@ -109,6 +109,12 @@ describe('TrainingPlanVersionService', () => {
 
   it('creates version 1 with the initial workout plan', async () => {
     const version = versionRecord();
+    const linkedWorkoutPlan = [
+      {
+        ...workoutPlan[0],
+        exerciseId: 'exercise-id',
+      },
+    ];
     findCycleById.mockResolvedValue({ id: 'cycle-id' });
     findVersion.mockResolvedValueOnce(null).mockResolvedValueOnce(version);
     createVersion.mockResolvedValue({
@@ -122,7 +128,8 @@ describe('TrainingPlanVersionService', () => {
     await expect(
       service.createInitialVersion({
         trainingCycleId: 'cycle-id',
-        workoutPlan,
+        sourceTemplateId: 'template-id',
+        workoutPlan: linkedWorkoutPlan,
       }),
     ).resolves.toMatchObject({
       id: 'version-1',
@@ -139,6 +146,7 @@ describe('TrainingPlanVersionService', () => {
     expect(createVersion).toHaveBeenCalledWith({
       data: {
         trainingCycleId: 'cycle-id',
+        sourceTemplateId: 'template-id',
         versionNumber: 1,
         status: TrainingPlanVersionStatus.ACTIVE,
         changeReason: 'Initial training plan',
@@ -147,7 +155,7 @@ describe('TrainingPlanVersionService', () => {
     expect(createWorkoutPlans).toHaveBeenCalledWith({
       data: [
         {
-          ...workoutPlan[0],
+          ...linkedWorkoutPlan[0],
           trainingPlanVersionId: 'version-1',
         },
       ],
@@ -265,6 +273,12 @@ describe('TrainingPlanVersionService', () => {
         status: TrainingPlanVersionStatus.ACTIVE,
       },
       include: {
+        sourceTemplate: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         workoutPlans: {
           orderBy: [{ dayOfWeek: 'asc' }, { order: 'asc' }],
         },
@@ -305,6 +319,12 @@ describe('TrainingPlanVersionService', () => {
         trainingCycleId: 'cycle-id',
       },
       include: {
+        sourceTemplate: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         workoutPlans: {
           orderBy: [{ dayOfWeek: 'asc' }, { order: 'asc' }],
         },

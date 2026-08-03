@@ -23,6 +23,11 @@ const RECENT_PLAN_CHANGE_LIMIT = 5;
 interface VersionRecordWithPlans {
   id: string;
   trainingCycleId: string;
+  sourceTemplateId?: string | null;
+  sourceTemplate?: {
+    id: string;
+    name: string;
+  } | null;
   versionNumber: number;
   status: TrainingPlanVersionStatus;
   changeReason: string;
@@ -31,6 +36,7 @@ interface VersionRecordWithPlans {
   updatedAt: Date;
   workoutPlans: Array<{
     id: string;
+    exerciseId?: string | null;
     dayOfWeek: DayOfWeek;
     category: string;
     exerciseName: string;
@@ -49,53 +55,62 @@ export class TrainingPlanVersionService {
   async createInitialVersion(
     input: CreateInitialTrainingPlanVersionDto,
   ): Promise<TrainingPlanVersionDto> {
+    return this.prisma.$transaction((transaction) =>
+      this.createInitialVersionInTransaction(transaction, input),
+    );
+  }
+
+  async createInitialVersionInTransaction(
+    transaction: Prisma.TransactionClient,
+    input: CreateInitialTrainingPlanVersionDto,
+  ): Promise<TrainingPlanVersionDto> {
     const workoutPlan = this.normalizeWorkoutPlan(input.workoutPlan);
     const reason = this.normalizeReason(input.reason ?? INITIAL_VERSION_REASON);
-
-    return this.prisma.$transaction(async (transaction) => {
-      const cycle = await transaction.trainingCycle.findUnique({
+    const cycle = await transaction.trainingCycle.findUnique({
         where: {
           id: input.trainingCycleId,
         },
         select: {
           id: true,
         },
-      });
-
-      if (!cycle) {
-        throw new NotFoundException('Training cycle was not found');
-      }
-
-      const existingVersion = await transaction.trainingPlanVersion.findFirst({
-        where: {
-          trainingCycleId: cycle.id,
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      if (existingVersion) {
-        throw new ConflictException('Training cycle already has a plan version');
-      }
-
-      const version = await transaction.trainingPlanVersion.create({
-        data: {
-          trainingCycleId: cycle.id,
-          versionNumber: INITIAL_VERSION_NUMBER,
-          status: TrainingPlanVersionStatus.ACTIVE,
-          changeReason: reason,
-        },
-      });
-      await transaction.workoutPlan.createMany({
-        data: workoutPlan.map((item) => ({
-          ...item,
-          trainingPlanVersionId: version.id,
-        })),
-      });
-
-      return this.getVersionById(transaction, version.id);
     });
+
+    if (!cycle) {
+      throw new NotFoundException('Training cycle was not found');
+    }
+
+    const existingVersion = await transaction.trainingPlanVersion.findFirst({
+      where: {
+        trainingCycleId: cycle.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (existingVersion) {
+      throw new ConflictException('Training cycle already has a plan version');
+    }
+
+    const version = await transaction.trainingPlanVersion.create({
+      data: {
+        trainingCycleId: cycle.id,
+        ...(input.sourceTemplateId
+          ? { sourceTemplateId: input.sourceTemplateId }
+          : {}),
+        versionNumber: INITIAL_VERSION_NUMBER,
+        status: TrainingPlanVersionStatus.ACTIVE,
+        changeReason: reason,
+      },
+    });
+    await transaction.workoutPlan.createMany({
+      data: workoutPlan.map((item) => ({
+        ...item,
+        trainingPlanVersionId: version.id,
+      })),
+    });
+
+    return this.getVersionById(transaction, version.id);
   }
 
   createNewVersion(
@@ -103,6 +118,7 @@ export class TrainingPlanVersionService {
   ): Promise<TrainingPlanVersionDto> {
     const normalizedInput = {
       currentVersionId: input.currentVersionId,
+      expectedTrainingCycleId: input.expectedTrainingCycleId,
       newWorkoutPlan: this.normalizeWorkoutPlan(input.newWorkoutPlan),
       reason: this.normalizeReason(input.reason),
     };
@@ -168,6 +184,9 @@ export class TrainingPlanVersionService {
     const newVersion = await transaction.trainingPlanVersion.create({
       data: {
         trainingCycleId: currentVersion.trainingCycleId,
+        ...(currentVersion.sourceTemplateId
+          ? { sourceTemplateId: currentVersion.sourceTemplateId }
+          : {}),
         versionNumber: nextVersionNumber,
         status: TrainingPlanVersionStatus.ACTIVE,
         changeReason: reason,
@@ -197,6 +216,12 @@ export class TrainingPlanVersionService {
         status: TrainingPlanVersionStatus.ACTIVE,
       },
       include: {
+        sourceTemplate: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         workoutPlans: {
           orderBy: [{ dayOfWeek: 'asc' }, { order: 'asc' }],
         },
@@ -221,6 +246,12 @@ export class TrainingPlanVersionService {
         trainingCycleId: cycleId,
       },
       include: {
+        sourceTemplate: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         workoutPlans: {
           orderBy: [{ dayOfWeek: 'asc' }, { order: 'asc' }],
         },
@@ -262,6 +293,12 @@ export class TrainingPlanVersionService {
         id,
       },
       include: {
+        sourceTemplate: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         workoutPlans: {
           orderBy: [{ dayOfWeek: 'asc' }, { order: 'asc' }],
         },
@@ -316,6 +353,14 @@ export class TrainingPlanVersionService {
       const category = item.category.trim();
       const exerciseName = item.exerciseName.trim();
 
+      if (
+        item.exerciseId !== undefined &&
+        item.exerciseId !== null &&
+        (typeof item.exerciseId !== 'string' || !item.exerciseId.trim())
+      ) {
+        throw new TypeError('exerciseId must be null or a non-empty string');
+      }
+
       if (!category || !exerciseName) {
         throw new TypeError('category and exerciseName must not be empty');
       }
@@ -338,6 +383,9 @@ export class TrainingPlanVersionService {
 
       return {
         ...item,
+        ...(typeof item.exerciseId === 'string'
+          ? { exerciseId: item.exerciseId.trim() }
+          : {}),
         category,
         exerciseName,
       };
@@ -378,12 +426,15 @@ export class TrainingPlanVersionService {
     return {
       id: version.id,
       trainingCycleId: version.trainingCycleId,
+      sourceTemplateId: version.sourceTemplateId ?? null,
+      sourceTemplate: version.sourceTemplate ?? null,
       versionNumber: version.versionNumber,
       status: version.status,
       changeReason: version.changeReason,
       createdFromVersionId: version.createdFromVersionId,
       workoutPlans: version.workoutPlans.map((plan) => ({
         id: plan.id,
+        exerciseId: plan.exerciseId ?? null,
         dayOfWeek: plan.dayOfWeek,
         category: plan.category,
         exerciseName: plan.exerciseName,

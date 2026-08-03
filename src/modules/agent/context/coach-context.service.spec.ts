@@ -96,6 +96,11 @@ describe('CoachContextService', () => {
       id: 'plan-version-2',
       versionNumber: 2,
       changeReason: 'reduce fatigue',
+      sourceTemplate: {
+        id: 'template-id',
+        name: 'fat_loss_intermediate_5_days',
+      },
+      createdAt: new Date('2026-07-31T08:00:00.000Z'),
     };
     const planVersionHistory = [
       currentPlanVersion,
@@ -143,6 +148,13 @@ describe('CoachContextService', () => {
       recentAdjustments,
       currentPlanVersion,
       recentPlanChanges,
+      generatedPlan: {
+        method: 'deterministic_template',
+        templateId: 'template-id',
+        templateName: 'fat_loss_intermediate_5_days',
+        currentVersion: 2,
+        generatedAt: currentPlanVersion.createdAt,
+      },
     });
     expect(getProfile).toHaveBeenCalledTimes(1);
     expect(getActiveGoal).toHaveBeenCalledTimes(1);
@@ -228,6 +240,7 @@ describe('CoachContextService', () => {
       recentAdjustments: [],
       currentPlanVersion: null,
       recentPlanChanges: [],
+      generatedPlan: null,
     });
   });
 });

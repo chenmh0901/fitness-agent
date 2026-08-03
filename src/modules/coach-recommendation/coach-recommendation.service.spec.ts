@@ -112,6 +112,7 @@ describe('CoachRecommendationService', () => {
       recentAdjustments: [],
       currentPlanVersion: null,
       recentPlanChanges: [],
+      generatedPlan: null,
       ...overrides,
     };
   }

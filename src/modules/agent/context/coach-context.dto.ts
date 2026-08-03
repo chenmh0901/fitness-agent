@@ -1,4 +1,5 @@
 import { CoachAdjustmentDto } from '../../coach-adjustment/dto/coach-adjustment.dto';
+import { GeneratedPlanMetadataDto } from '../../coach-plan-generator/dto/generated-training-plan.dto';
 import {
   TrainingPlanChangeDto,
   TrainingPlanVersionDto,
@@ -33,4 +34,5 @@ export class CoachContextDto {
   recentAdjustments: CoachAdjustmentDto[];
   currentPlanVersion: TrainingPlanVersionDto | null;
   recentPlanChanges: TrainingPlanChangeDto[];
+  generatedPlan: GeneratedPlanMetadataDto | null;
 }

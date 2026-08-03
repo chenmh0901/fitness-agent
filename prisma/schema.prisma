@@ -167,6 +167,7 @@ model TrainingCycle {
 model TrainingPlanVersion {
   id                   String                    @id @default(uuid()) @db.Uuid
   trainingCycleId      String                    @db.Uuid
+  sourceTemplateId     String?                   @db.Uuid
   versionNumber        Int
   status               TrainingPlanVersionStatus @default(ACTIVE)
   changeReason         String                    @db.Text
@@ -174,6 +175,7 @@ model TrainingPlanVersion {
   createdAt            DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime                  @default(now()) @updatedAt @db.Timestamptz(3)
   trainingCycle        TrainingCycle             @relation(fields: [trainingCycleId], references: [id], onDelete: Cascade)
+  sourceTemplate       TrainingTemplate?         @relation(fields: [sourceTemplateId], references: [id], onDelete: SetNull)
   workoutPlans         WorkoutPlan[]
   createdFromVersion   TrainingPlanVersion?      @relation("TrainingPlanVersionHistory", fields: [createdFromVersionId], references: [id], onDelete: SetNull)
   derivedVersions      TrainingPlanVersion[]     @relation("TrainingPlanVersionHistory")
@@ -181,12 +183,14 @@ model TrainingPlanVersion {
   @@unique([trainingCycleId, versionNumber])
   @@index([trainingCycleId, status])
   @@index([createdFromVersionId])
+  @@index([sourceTemplateId])
   @@map("training_plan_versions")
 }
 
 model WorkoutPlan {
   id                    String              @id @default(uuid()) @db.Uuid
   trainingPlanVersionId String              @db.Uuid
+  exerciseId            String?             @db.Uuid
   dayOfWeek             DayOfWeek
   category              String              @db.VarChar(50)
   exerciseName          String              @db.VarChar(150)
@@ -199,10 +203,63 @@ model WorkoutPlan {
   createdAt             DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime            @updatedAt @db.Timestamptz(3)
   trainingPlanVersion   TrainingPlanVersion @relation(fields: [trainingPlanVersionId], references: [id], onDelete: Cascade)
+  exercise              Exercise?           @relation(fields: [exerciseId], references: [id], onDelete: SetNull)
 
   @@unique([trainingPlanVersionId, dayOfWeek, order])
   @@index([trainingPlanVersionId, category])
+  @@index([exerciseId])
   @@map("workout_plans")
+}
+
+model Exercise {
+  id                String                     @id @default(uuid()) @db.Uuid
+  name              String                     @unique @db.VarChar(150)
+  category          String                     @db.VarChar(50)
+  muscleGroup       String                     @db.VarChar(80)
+  equipment         String                     @db.VarChar(80)
+  difficulty        TrainingExperience
+  description       String                     @db.Text
+  createdAt         DateTime                   @default(now()) @db.Timestamptz(3)
+  workoutPlans      WorkoutPlan[]
+  templateExercises TrainingTemplateExercise[]
+
+  @@index([category, difficulty])
+  @@map("exercises")
+}
+
+model TrainingTemplate {
+  id                String                     @id @default(uuid()) @db.Uuid
+  name              String                     @unique @db.VarChar(150)
+  goal              ProfileFitnessGoal
+  experience        TrainingExperience
+  daysPerWeek       Int
+  createdAt         DateTime                   @default(now()) @db.Timestamptz(3)
+  templateExercises TrainingTemplateExercise[]
+  generatedVersions TrainingPlanVersion[]
+
+  @@unique([goal, experience, daysPerWeek])
+  @@map("training_templates")
+}
+
+model TrainingTemplateExercise {
+  id                 String           @id @default(uuid()) @db.Uuid
+  trainingTemplateId String           @db.Uuid
+  exerciseId         String           @db.Uuid
+  dayOfWeek          DayOfWeek
+  category           String           @db.VarChar(50)
+  sets               Int
+  reps               Int
+  targetWeight       Decimal?         @db.Decimal(6, 2)
+  targetRpe          Decimal?         @db.Decimal(3, 1)
+  order              Int
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+  trainingTemplate   TrainingTemplate @relation(fields: [trainingTemplateId], references: [id], onDelete: Cascade)
+  exercise           Exercise         @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+
+  @@unique([trainingTemplateId, dayOfWeek, order])
+  @@index([trainingTemplateId, dayOfWeek])
+  @@index([exerciseId])
+  @@map("training_template_exercises")
 }
 
 model WorkoutSession {
